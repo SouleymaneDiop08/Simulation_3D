@@ -61,7 +61,7 @@ convient) et renseignez dans l'inspecteur :
 
 | Champ | Valeur |
 |---|---|
-| Url Passerelle | `ws://localhost:8081` |
+| Url Passerelle | **laisser vide** (voir « Un seul build » plus bas) |
 | Train 1 / Train 2 | vos deux `TrainController` |
 | Aiguillage 1 / 2 | vos `AiguillageController` |
 
@@ -204,10 +204,14 @@ S'il se fige plus de 2 s, `PlcLink` serre le frein d'urgence de lui-même. C'est
 évite qu'un train reste lancé après une coupure de l'automate ou de la passerelle.
 Testez-le : arrêtez le PLC depuis le Dashboard OpenPLC, le train doit s'arrêter.
 
-**Unités.** L'automate envoie `vitesseLimite` en **km/h**, alors que `TrainController`
-calcule en **m/s** (`distanceTrain += vitesse * Time.deltaTime`). Tant que ce point
-n'est pas tranché dans la simulation, `vitesseAutorisee` sera comparée à une grandeur
-d'unité différente.
+**Unités — convention arrêtée.** La simulation travaille en **m/s** en interne ;
+les **km/h** ne servent qu'aux échanges. `PlcLink` fait la conversion à la
+réception (`vitesseLimite / TrainController.MS_VERS_KMH`), il n'y a donc rien à
+convertir côté automate : le programme ST raisonne en km/h de bout en bout.
+
+Les échelles restent **métier**, pas normalisées sur 0–65535 : traction en pour
+mille, vitesses en km/h, aspects de signal en énumération. C'est plus lisible
+dans le programme ST et conforme à l'usage industriel.
 
 ---
 
