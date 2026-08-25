@@ -1,0 +1,40 @@
+# Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Solutions / IDE
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.vs/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (passerelle PLC)
+node_modules/
+
+# Crashlytics / builds
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+crashlytics-build.properties

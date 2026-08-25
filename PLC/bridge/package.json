@@ -1,0 +1,14 @@
+{
+  "name": "openplc-unity-bridge",
+  "version": "1.0.0",
+  "description": "Passerelle Modbus TCP (OpenPLC) vers WebSocket pour un build Unity WebGL",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.17",
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}
