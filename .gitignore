@@ -44,3 +44,6 @@ desktop.ini
 Thumbs.db
 ehthumbs.db
 $RECYCLE.BIN/
+
+# Archives de build
+*.zip
