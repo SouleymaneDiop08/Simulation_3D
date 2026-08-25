@@ -94,6 +94,11 @@ let plcConnecte = false;
 let seq = 0;
 let derniereErreur = "";
 
+// Derniere trame lue, servie telle quelle sur GET /data.
+// C'est le mode de liaison retenu par GRFICS : la vue 3D interroge un
+// endpoint HTTP de meme origine, sans jamais parler Modbus elle-meme.
+let derniereTrame = null;
+
 // Trame de repli diffusee quand l'automate est injoignable.
 // plc:false doit declencher le frein d'urgence cote Unity.
 function trameDegradee() {
@@ -158,6 +163,19 @@ const MIME = {
 
 const serveur = http.createServer((req, res) => {
     let rel = decodeURIComponent(req.url.split("?")[0]);
+
+    // ---- Endpoint de donnees (equivalent du data/index.php de GRFICS) ----
+    // Meme origine que le build : ni CORS, ni contenu mixte a gerer.
+    if (rel === "/data") {
+        res.writeHead(200, {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+        });
+        res.end(JSON.stringify(derniereTrame || trameDegradee()));
+        return;
+    }
+
     if (rel === "/") rel = "/index.html";
 
     // Empeche toute remontee hors du dossier servi
@@ -213,6 +231,9 @@ wss.on("connection", (ws, req) => {
 });
 
 function diffuser(trame) {
+    // Conservee meme sans client WebSocket : GET /data doit rester a jour
+    derniereTrame = trame;
+
     if (clients === 0) return;
     const msg = JSON.stringify(trame);
     for (const ws of wss.clients) {
@@ -279,6 +300,7 @@ serveur.listen(CFG.httpPort, () => {
     console.log("========================================================");
     console.log(`  OpenPLC   : modbus tcp ${CFG.plcHost}:${CFG.plcPort}`);
     console.log(`  WebSocket : ws://localhost:${CFG.httpPort}`);
+    console.log(`  Donnees   : http://localhost:${CFG.httpPort}/data`);
     console.log(`  Build     : http://localhost:${CFG.httpPort}  (${CFG.webglDir})`);
     console.log(`  Scrutation: ${CFG.pollMs} ms`);
     console.log("========================================================");

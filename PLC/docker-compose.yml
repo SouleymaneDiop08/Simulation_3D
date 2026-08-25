@@ -1,0 +1,79 @@
+# =============================================================================
+#  Banc SimulationFerroviaire  —  OpenPLC + passerelle + vue 3D WebGL
+# =============================================================================
+#
+#  Reprend l'organisation de GRFICSv3 : un réseau ICS à adresses fixes, chaque
+#  rôle dans son conteneur, tout monte en une commande.
+#
+#  Différence de fond avec GRFICS : là-bas le procédé (réacteur chimique) est
+#  l'autorité et l'automate lit ses capteurs. Ici c'est l'inverse — l'automate
+#  produit les ordres, la simulation les applique. La passerelle est donc
+#  cliente Modbus du runtime OpenPLC, et non un équipement d'E/S déporté.
+#
+#  Lancement :   docker compose up --build
+#  Interfaces :  OpenPLC     http://localhost:8080   (openplc / openplc)
+#                Vue 3D      http://localhost:8081
+#                Données     http://localhost:8081/data
+# =============================================================================
+
+services:
+
+  plc:
+    build:
+      context: ./openplc
+    container_name: sf-plc
+    hostname: plc
+    ports:
+      - "8080:8080"     # interface web OpenPLC
+      - "502:502"       # serveur Modbus TCP
+    volumes:
+      # Le programme ST est monté en lecture seule : il suffit de l'uploader
+      # une fois depuis l'interface web (Programs → Upload).
+      - ./simulation_ferroviaire.st:/programs/simulation_ferroviaire.st:ro
+      - plc_data:/opt/OpenPLC_v3/webserver/scripts
+    networks:
+      ics:
+        ipv4_address: 172.28.0.2
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+
+  bridge:
+    build:
+      context: ./bridge
+    container_name: sf-bridge
+    hostname: bridge
+    depends_on:
+      plc:
+        condition: service_healthy
+    environment:
+      PLC_HOST: 172.28.0.2
+      PLC_PORT: "502"
+      PORT: "8081"
+      WEBGL_DIR: /webgl
+    ports:
+      - "8081:8081"     # vue 3D + WebSocket + GET /data
+    volumes:
+      # Build WebGL servi en lecture seule. Rebuild depuis Unity = simple
+      # rafraîchissement du navigateur, pas besoin de relancer le conteneur.
+      - ../Build/WebGL:/webgl:ro
+    networks:
+      ics:
+        ipv4_address: 172.28.0.3
+    restart: unless-stopped
+
+
+networks:
+  ics:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  plc_data:
