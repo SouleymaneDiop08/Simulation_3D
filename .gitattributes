@@ -1,0 +1,24 @@
+# Les fichiers YAML d'Unity doivent rester en LF : sinon un aller-retour
+# Linux <-> Windows réécrit des milliers de lignes sans changement réel.
+*.unity        -text merge=unityyamlmerge diff
+*.prefab       -text merge=unityyamlmerge diff
+*.asset        -text merge=unityyamlmerge diff
+*.meta         -text merge=unityyamlmerge diff
+*.mat          -text merge=unityyamlmerge diff
+*.controller   -text merge=unityyamlmerge diff
+*.physicMaterial -text merge=unityyamlmerge diff
+
+# Sources : LF dans le dépôt
+*.cs           text eol=lf diff=csharp
+*.js           text eol=lf
+*.json         text eol=lf
+*.md           text eol=lf
+*.st           text eol=lf
+
+# Binaires
+*.png binary
+*.jpg binary
+*.fbx binary
+*.dll binary
+*.ttf binary
+*.pdf binary
