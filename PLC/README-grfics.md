@@ -89,6 +89,32 @@ sens que vous voulez, il n'y a rien à remonter vers l'automate, et le montage
 
 ---
 
+## Décision arrêtée : liaison à sens unique
+
+**L'automate alimente la simulation. Rien ne remonte.**
+
+Pas de couche d'E/S déportées, pas de « Slave Devices », pas d'écriture Modbus
+depuis la passerelle. La chaîne est en lecture seule de bout en bout, et c'est
+vérifiable :
+
+| Maillon | État |
+|---|---|
+| `bridge.js` | `readCoils` et `readHoldingRegisters` uniquement — aucune écriture |
+| `PlcLink.cs` | réception seule — aucun envoi |
+| `%IX0.0` (`AU_Externe`) | forcé à la main depuis la page Monitoring d'OpenPLC, jamais par la simulation |
+
+Conséquence assumée : la boucle est **ouverte**. L'automate commande sans savoir
+où sont les trains ni si une aiguille a réellement manœuvré. Le programme ST est
+donc un dérouleur de scénario, pas un enclenchement — ce qui correspond à
+l'usage voulu.
+
+Si ce choix devait un jour être revu, le point d'entrée est documenté plus haut
+(« La différence de fond ») : il faudrait soit écrire dans les `%MW`, soit faire
+de la passerelle un serveur Modbus déclaré en *Slave Device*. Ni l'un ni l'autre
+n'est en place, et rien dans le code ne le prépare — c'est délibéré.
+
+---
+
 ## Ce qu'on a repris
 
 **Un endpoint HTTP de même origine**, équivalent de leur `data/index.php` :
