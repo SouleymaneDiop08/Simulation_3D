@@ -1,34 +1,20 @@
 using UnityEngine;
 
 
+/// <summary>
+/// Modèle de vitesse du convoi.
+///
+/// S'exécute avant TrainController (voir DefaultExecutionOrder) : il écrit
+/// train.vitesse, que TrainController lit ensuite dans la même image. Sans cet
+/// ordre explicite, l'ordre d'appel des Update était indéterminé et la vitesse
+/// utilisée pouvait dater de l'image précédente.
+///
+/// Unités : mètres par seconde, mètres par seconde carrée.
+/// </summary>
+[DefaultExecutionOrder(-10)]
 public class TrainPhysicsController : MonoBehaviour
 {
-
-    public TrainController train;
-
-
-    [Header("Vitesse")]
-    public float vitesseMax = 70f;
-
-    public float vitesseDemandee = 0f;
-
-    public float vitesseActuelle = 0f;
-
-
-
-    [Header("Physique")]
-    public float acceleration = 5f;
-
-    public float freinServicePuissance = 10f;
-
-    public float freinUrgencePuissance = 25f;
-
-
-
-
-
-
-    private enum EtatFrein
+    public enum EtatFrein
     {
         Relache,
         Service,
@@ -36,104 +22,86 @@ public class TrainPhysicsController : MonoBehaviour
     }
 
 
+    [Header("Train associé")]
+    public TrainController train;
+
+
+    [Header("Vitesse (m/s)")]
+    public float vitesseMax = 70f;
+    public float vitesseDemandee = 0f;
+    public float vitesseActuelle = 0f;
+
+
+    [Header("Physique (m/s²)")]
+    public float acceleration = 5f;
+    public float freinServicePuissance = 10f;
+    public float freinUrgencePuissance = 25f;
+
+
+    /// <summary>État courant du freinage.</summary>
+    public EtatFrein Frein => etatFrein;
+
+
     private EtatFrein etatFrein = EtatFrein.Relache;
 
 
-
-void Start()
-{
-
-    etatFrein = EtatFrein.Relache;
-    vitesseDemandee = 0;
-    vitesseActuelle = 0;
-}
-
-    void Update()
+    private void Start()
     {
+        Reinitialiser();
+    }
 
-        if(train == null)
+
+    private void Update()
+    {
+        if (train == null)
             return;
 
+        float cible;
+        float taux;
 
-
-        if(etatFrein == EtatFrein.Relache)
+        switch (etatFrein)
         {
+            case EtatFrein.Service:
+                cible = 0f;
+                taux = freinServicePuissance;
+                break;
 
-            vitesseActuelle = Mathf.MoveTowards(
-                vitesseActuelle,
-                vitesseDemandee,
-                acceleration * Time.deltaTime
-            );
+            case EtatFrein.Urgence:
+                cible = 0f;
+                taux = freinUrgencePuissance;
+                break;
 
+            default:
+                cible = Mathf.Clamp(vitesseDemandee, 0f, vitesseMax);
+                taux = acceleration;
+                break;
         }
 
-
-
-        if(etatFrein == EtatFrein.Service)
-        {
-
-            vitesseActuelle = Mathf.MoveTowards(
-                vitesseActuelle,
-                0,
-                freinServicePuissance * Time.deltaTime
-            );
-
-        }
-
-
-
-        if(etatFrein == EtatFrein.Urgence)
-        {
-
-            vitesseActuelle = Mathf.MoveTowards(
-                vitesseActuelle,
-                0,
-                freinUrgencePuissance * Time.deltaTime
-            );
-
-        }
-
-
-
-train.vitesse = vitesseActuelle;    
-    }
-
-
-
-
-
-
-
-    public void ChangerTraction(float valeur)
-    {
-
-  
-
-
-        valeur = Mathf.Clamp01(valeur);
-
-
-
-        vitesseDemandee =
-            valeur * vitesseMax;
-
-
-
-        etatFrein = EtatFrein.Relache;
-
-
-
-        Debug.Log(
-            "Consigne : "
-            + vitesseDemandee
+        vitesseActuelle = Mathf.MoveTowards(
+            vitesseActuelle,
+            cible,
+            taux * Time.deltaTime
         );
 
+        train.vitesse = vitesseActuelle;
     }
 
 
+    // ==========================================================
+    // COMMANDES
+    // ==========================================================
 
-
-
+    /// <summary>
+    /// Consigne de traction, de 0 à 1.
+    ///
+    /// Ne desserre PAS les freins : c'était le cas auparavant, si bien qu'un
+    /// simple changement de consigne annulait un freinage d'urgence. Le
+    /// desserrage doit être demandé explicitement via RelacherFrein().
+    /// </summary>
+    public void ChangerTraction(float valeur)
+    {
+        vitesseDemandee = Mathf.Clamp01(valeur) * vitesseMax;
+    }
 
 
     public void FreinService()
@@ -142,41 +110,26 @@ train.vitesse = vitesseActuelle;
     }
 
 
-
-
-
-
-
     public void FreinUrgence()
     {
-
-        vitesseDemandee = 0;
-
-
+        vitesseDemandee = 0f;
         etatFrein = EtatFrein.Urgence;
-
     }
 
 
+    public void RelacherFrein()
+    {
+        etatFrein = EtatFrein.Relache;
+    }
 
 
+    public void Reinitialiser()
+    {
+        etatFrein = EtatFrein.Relache;
+        vitesseDemandee = 0f;
+        vitesseActuelle = 0f;
 
-public void RelacherFrein()
-{
-    etatFrein = EtatFrein.Relache;
-
-    Debug.Log(
-        "Frein relâché"
-    );
-}
-
-    
-
-
-
-
-
-
-
-
+        if (train != null)
+            train.vitesse = 0f;
+    }
 }

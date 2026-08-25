@@ -1,27 +1,37 @@
 using UnityEngine;
 
 
+/// <summary>
+/// Un wagon posé sur une voie. Ne décide de rien : il est positionné par son
+/// TrainController à partir d'une distance curviligne.
+/// </summary>
 public class WagonController : MonoBehaviour
 {
-
+    [Header("Voie")]
     public TrackSystem trackSystem;
 
-
+    [Tooltip("Longueur du wagon, en mètres.")]
     public float longueurWagon = 10f;
 
-public TrainController train;
-[Header("Dégâts")]
-[Header("Dégâts")]
-public ParticleSystem suieChoc;
-// ==========================
-// DÉRAILLEMENT
-// ==========================
+    [Header("Train")]
+    public TrainController train;
 
-[HideInInspector]
-public Vector3 derailOffset = Vector3.zero;
+    [Header("Dégâts")]
+    public ParticleSystem suieChoc;
 
-[HideInInspector]
-public Quaternion derailRotation = Quaternion.identity;
+
+    // ==========================================================
+    // DÉRAILLEMENT
+    // Écart et rotation appliqués par-dessus la position de voie.
+    // Exprimés dans le repère de la voie, pas en coordonnées monde.
+    // ==========================================================
+
+    [HideInInspector]
+    public Vector3 derailOffset = Vector3.zero;
+
+    [HideInInspector]
+    public Quaternion derailRotation = Quaternion.identity;
+
 
     public void SetTrack(TrackSystem track)
     {
@@ -29,105 +39,51 @@ public Quaternion derailRotation = Quaternion.identity;
     }
 
 
-
-
-
+    /// <summary>
+    /// Place le wagon à la distance donnée sur sa voie.
+    /// </summary>
     public void Move(float distanceSurVoie)
     {
-
-        if(trackSystem == null)
+        if (trackSystem == null || !trackSystem.Pret)
             return;
 
+        distanceSurVoie = Mathf.Clamp(distanceSurVoie, 0f, trackSystem.Longueur);
 
+        Vector3 position = trackSystem.GetPosition(distanceSurVoie);
+        Vector3 direction = trackSystem.GetDirection(distanceSurVoie);
 
-        distanceSurVoie =
-            Mathf.Clamp(
-                distanceSurVoie,
-                0,
-                trackSystem.longueur
-            );
+        Quaternion rotationVoie = direction.sqrMagnitude > 1e-6f
+            ? Quaternion.LookRotation(direction, Vector3.up)
+            : transform.rotation;
 
-
-
-        Vector3 position =
-            trackSystem.GetPosition(
-                distanceSurVoie
-            );
-
-
-
-        Vector3 avant =
-            trackSystem.GetPosition(
-                Mathf.Min(
-                    distanceSurVoie + longueurWagon,
-                    trackSystem.longueur
-                )
-            );
-
-
-
-        Vector3 arriere =
-            trackSystem.GetPosition(
-                Mathf.Max(
-                    distanceSurVoie - longueurWagon,
-                    0
-                )
-            );
-
-
-
-        Vector3 direction =
-            avant - arriere;
-
-
-
-  
-
-
-
-     Quaternion rotationNormale = transform.rotation;
-
-if(direction.sqrMagnitude > 0.001f)
-{
-    rotationNormale =
-        Quaternion.LookRotation(
-            direction.normalized,
-            Vector3.up
+        // L'écart de déraillement est tourné avec la voie : sinon un wagon
+        // déraillé serait toujours poussé vers -X global, quelle que soit son
+        // orientation dans la courbe.
+        transform.SetPositionAndRotation(
+            position + rotationVoie * derailOffset,
+            rotationVoie * derailRotation
         );
-}
-Debug.Log(
-    name + " offset = " + derailOffset
-);
-transform.position =
-    position + derailOffset;
-
-transform.rotation =
-    rotationNormale * derailRotation;
-
     }
-public void AppliquerDegatVisuel()
-{
 
-    if(suieChoc != null)
+
+    /// <summary>Remet le wagon dans son état nominal (sortie de déraillement).</summary>
+    public void Reinitialiser()
     {
+        derailOffset = Vector3.zero;
+        derailRotation = Quaternion.identity;
+    }
 
-        suieChoc.transform.position =
-            transform.position;
 
+    public void AppliquerDegatVisuel()
+    {
+        if (suieChoc == null)
+            return;
 
-        suieChoc.transform.rotation =
-            transform.rotation;
-
+        suieChoc.transform.SetPositionAndRotation(
+            transform.position,
+            transform.rotation
+        );
 
         suieChoc.Play();
-
     }
-
-
-    Debug.Log(
-        name + " : dégâts visuels activés"
-    );
-
-}
-
 }

@@ -1,187 +1,142 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 
+/// <summary>
+/// Détecte le rapprochement de deux convois et déclenche le choc.
+///
+/// Les détecteurs se recensent eux-mêmes dans une liste statique. L'ancienne
+/// version appelait FindObjectsByType() à chaque image et pour chaque
+/// détecteur : coût en O(n²) et allocation d'un tableau à chaque appel.
+/// </summary>
 public class TrainCollisionDetector : MonoBehaviour
 {
+    private static readonly List<TrainCollisionDetector> Detecteurs =
+        new List<TrainCollisionDetector>();
+
 
     [Header("Train associé")]
     public TrainController train;
 
 
-
     [Header("Détection")]
+    [Tooltip("Distance de déclenchement du choc, en mètres.")]
     public float distanceDetection = 5f;
 
 
-
     [Header("Impact")]
- public float forceImpact = 35f;
+    public float forceImpact = 35f;
+    public float dureeImpact = 1f;
 
-public float dureeImpact = 1f;
 
-[Header("Explosion")]
-public GameObject explosionPrefab;
+    [Header("Explosion")]
+    public GameObject explosionPrefab;
+
+    [Tooltip("Durée de vie de l'effet d'explosion, en secondes.")]
+    public float dureeExplosion = 5f;
+
+    public float echelleExplosion = 5f;
+
 
     private bool collisionEffectuee = false;
 
 
-
-    void Update()
+    private void OnEnable()
     {
-
-        if(train == null)
-            return;
-
-
-
-        if(collisionEffectuee)
-            return;
-
-
-
-
-        TrainCollisionDetector[] trains =
-            FindObjectsByType<TrainCollisionDetector>();
-
-
-
-        foreach(TrainCollisionDetector autre in trains)
-        {
-
-            if(autre == this)
-                continue;
-
-
-            if(autre.train == null)
-                continue;
-
-
-            if(autre.train == train)
-                continue;
-
-
-
-            float distance =
-                Vector3.Distance(
-                    transform.position,
-                    autre.transform.position
-                );
-
-
-
-            if(distance <= distanceDetection)
-            {
-
-                CollisionTrain(autre);
-
-                break;
-
-            }
-
-        }
-
+        Detecteurs.Add(this);
     }
 
 
-
-
-
-    void CollisionTrain(
-        TrainCollisionDetector autre
-    )
+    private void OnDisable()
     {
+        Detecteurs.Remove(this);
+    }
 
-        if(collisionEffectuee)
+
+    private void Update()
+    {
+        if (train == null || collisionEffectuee)
             return;
 
+        float seuilCarre = distanceDetection * distanceDetection;
 
-        if(autre.collisionEffectuee)
-            return;
+        for (int i = 0; i < Detecteurs.Count; i++)
+        {
+            TrainCollisionDetector autre = Detecteurs[i];
+
+            if (autre == null || autre == this)
+                continue;
+
+            if (autre.collisionEffectuee)
+                continue;
+
+            // Deux détecteurs du même convoi ne se percutent pas
+            if (autre.train == null || autre.train == train)
+                continue;
+
+            float distanceCarree =
+                (autre.transform.position - transform.position).sqrMagnitude;
+
+            if (distanceCarree <= seuilCarre)
+            {
+                CollisionTrain(autre);
+                return;
+            }
+        }
+    }
 
 
-
-
+    private void CollisionTrain(TrainCollisionDetector autre)
+    {
         collisionEffectuee = true;
-
         autre.collisionEffectuee = true;
 
+        Vector3 pointImpact =
+            (transform.position + autre.transform.position) * 0.5f
+            + Vector3.up * 2f;
 
+        Debug.Log($"[Choc] {train.name} et {autre.train.name} au point {pointImpact}", this);
 
-        Debug.Log(
-            "CHOC ENTRE : "
-            + train.name
-            + " ET "
-            + autre.train.name
-        );
+        // Les dégâts étaient auparavant imbriqués dans le test sur le prefab
+        // d'explosion : sans prefab assigné, aucun dégât n'était appliqué.
+        AppliquerDegats(train, pointImpact);
+        AppliquerDegats(autre.train, pointImpact);
 
-// ==========================
-// EXPLOSION
-// ==========================
+        if (explosionPrefab != null)
+        {
+            GameObject explosion = Instantiate(
+                explosionPrefab,
+                pointImpact,
+                Quaternion.identity
+            );
 
-if(explosionPrefab != null)
-{
+            explosion.transform.localScale = Vector3.one * echelleExplosion;
 
-Vector3 pointImpact =
-    (
-        transform.position +
-        autre.transform.position
-    ) * 0.5f;
-pointImpact.y += 2f;
-Debug.Log("EXPLOSION CRÉÉE À : " + pointImpact);
+            // Sans destruction programmée, chaque choc laissait un objet
+            // d'effet dans la scène jusqu'à la fin de la partie.
+            Destroy(explosion, dureeExplosion);
+        }
 
-GameObject explosion =
-    Instantiate(
-        explosionPrefab,
-        pointImpact + Vector3.up ,
-        Quaternion.identity
-    );
-    TrainDamageController degats =
-    train.GetComponent<TrainDamageController>();
-
-
-if(degats != null)
-{
-    degats.AppliquerDegats(pointImpact);
-}
-
-
-
-TrainDamageController degatsAutre =
-    autre.train.GetComponent<TrainDamageController>();
-
-
-if(degatsAutre != null)
-{
-    degatsAutre.AppliquerDegats(pointImpact);
-}
-
-
-explosion.transform.localScale =
-    Vector3.one * 5f;
-
-
-Debug.Log(
-    "Explosion créée : "
-    + explosion.name
-);
-}
-
-
-
-        // ==========================
-        // REACTION CHOC
-        // ==========================
-
-train.AppliquerImpact(
-    forceImpact,
-    dureeImpact
-);
-
-
-autre.train.AppliquerImpact(
-    forceImpact,
-    dureeImpact
-);
+        train.AppliquerImpact(forceImpact, dureeImpact);
+        autre.train.AppliquerImpact(forceImpact, dureeImpact);
     }
 
+
+    private static void AppliquerDegats(TrainController train, Vector3 pointImpact)
+    {
+        if (train == null)
+            return;
+
+        TrainDamageController degats = train.GetComponent<TrainDamageController>();
+
+        if (degats != null)
+            degats.AppliquerDegats(pointImpact);
+    }
+
+
+    /// <summary>Réarme le détecteur après réinitialisation du convoi.</summary>
+    public void Reinitialiser()
+    {
+        collisionEffectuee = false;
+    }
 }

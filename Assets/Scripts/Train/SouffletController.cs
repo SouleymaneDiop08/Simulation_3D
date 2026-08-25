@@ -1,68 +1,72 @@
 using UnityEngine;
 
+
+/// <summary>
+/// Soufflet d'intercirculation : s'étire, se comprime et s'oriente selon
+/// l'écartement des deux attaches.
+/// </summary>
 public class SouffletController : MonoBehaviour
 {
+    [Header("Attaches")]
     public Transform attacheArriere;
     public Transform attacheAvant;
 
-    public Transform boneDebut;
+
+    [Header("Ossature")]
     public Transform boneMilieu;
-    public Transform boneFin;
 
 
     private float longueurInitiale;
+    private bool valide;
 
 
-    void Start()
+    private void Start()
     {
-        longueurInitiale =
-            Vector3.Distance(
-                attacheArriere.position,
-                attacheAvant.position
-            );
+        // Start() déréférençait les attaches sans vérification, alors même
+        // qu'Update() en faisait une : un champ non assigné provoquait un
+        // NullReferenceException au démarrage.
+        valide = attacheArriere != null
+                 && attacheAvant != null
+                 && boneMilieu != null;
+
+        if (!valide)
+        {
+            Debug.LogWarning($"[Soufflet] {name} : références incomplètes, composant inactif.", this);
+            enabled = false;
+            return;
+        }
+
+        longueurInitiale = Vector3.Distance(
+            attacheArriere.position,
+            attacheAvant.position
+        );
+
+        // Une longueur initiale nulle donnerait une division par zéro
+        if (longueurInitiale < 0.001f)
+        {
+            Debug.LogWarning($"[Soufflet] {name} : attaches confondues, composant inactif.", this);
+            enabled = false;
+            valide = false;
+        }
     }
 
 
-    void Update()
+    private void LateUpdate()
     {
-        if (attacheArriere == null ||
-            attacheAvant == null)
+        if (!valide)
             return;
 
+        Vector3 ecart = attacheAvant.position - attacheArriere.position;
 
-        float longueurActuelle =
-            Vector3.Distance(
-                attacheArriere.position,
-                attacheAvant.position
-            );
+        // Compression / extension
+        float ratio = ecart.magnitude / longueurInitiale;
 
+        Vector3 echelle = boneMilieu.localScale;
+        echelle.z = ratio;
+        boneMilieu.localScale = echelle;
 
-        float ratio =
-            longueurActuelle / longueurInitiale;
-
-
-        // Compression / extension du milieu
-        Vector3 scale =
-            boneMilieu.localScale;
-
-        scale.z = ratio;
-
-        boneMilieu.localScale = scale;
-
-
-        // Rotation du soufflet dans le virage
-        Vector3 direction =
-            attacheAvant.position -
-            attacheArriere.position;
-
-
-        Quaternion rotation =
-            Quaternion.LookRotation(
-                direction,
-                Vector3.up
-            );
-
-
-        boneMilieu.rotation = rotation;
+        // Orientation dans la courbe
+        if (ecart.sqrMagnitude > 1e-6f)
+            boneMilieu.rotation = Quaternion.LookRotation(ecart.normalized, Vector3.up);
     }
 }
