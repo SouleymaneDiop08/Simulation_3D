@@ -60,8 +60,10 @@ public class PlcLink : MonoBehaviour
     // ======================================================================
 
     [Header("Passerelle")]
-    [Tooltip("Laisser vide pour deduire l'adresse de la page qui sert le build.")]
-    public string urlPasserelle = "ws://localhost:8081";
+    [Tooltip("Laisser VIDE en production : l'adresse est alors deduite de la page " +
+             "qui sert le build, donc un seul build fonctionne en local, sur le " +
+             "reseau et derriere HTTPS. Ne remplir que pour forcer une adresse.")]
+    public string urlPasserelle = "";
 
     [Tooltip("Secondes sans battement avant de considerer la liaison perdue.")]
     public float delaiChienDeGarde = 2f;
@@ -155,11 +157,64 @@ public class PlcLink : MonoBehaviour
     // CONNEXION
     // ======================================================================
 
+    /// <summary>
+    /// Determine l'adresse de la passerelle, par ordre de priorite :
+    ///
+    ///   1. parametre d'URL ?plc=...  — permet de rediriger un build deja
+    ///      compile, sans repasser par Unity ;
+    ///   2. le champ de l'inspecteur, s'il est rempli ;
+    ///   3. l'origine de la page qui sert le build (WebGL) — meme hote, meme
+    ///      port, et wss:// automatiquement si la page est en HTTPS ;
+    ///   4. localhost, pour l'editeur.
+    ///
+    /// Sans le point 3, un build compile avec "localhost" ne fonctionnerait que
+    /// sur la machine qui l'heberge : tout poste distant chercherait la
+    /// passerelle sur lui-meme.
+    /// </summary>
+    private string ResoudreUrl()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        string page = Application.absoluteURL;
+
+        if (!string.IsNullOrEmpty(page))
+        {
+            try
+            {
+                System.Uri uri = new System.Uri(page);
+
+                // 1. Redirection explicite par la barre d'adresse
+                foreach (string couple in uri.Query.TrimStart('?').Split('&'))
+                {
+                    if (couple.StartsWith("plc="))
+                        return System.Uri.UnescapeDataString(couple.Substring(4));
+                }
+
+                // 2. Champ de l'inspecteur
+                if (!string.IsNullOrEmpty(urlPasserelle))
+                    return urlPasserelle;
+
+                // 3. Meme origine que la page. Une page en HTTPS impose wss://,
+                //    sinon le navigateur bloque la connexion.
+                string schema = uri.Scheme == "https" ? "wss" : "ws";
+                return $"{schema}://{uri.Host}:{uri.Port}";
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[PLC] URL de page illisible : " + e.Message);
+            }
+        }
+#endif
+
+        if (!string.IsNullOrEmpty(urlPasserelle))
+            return urlPasserelle;
+
+        return "ws://localhost:8081";
+    }
+
+
     private async System.Threading.Tasks.Task Connecter()
     {
-        string url = string.IsNullOrEmpty(urlPasserelle)
-            ? "ws://localhost:8081"
-            : urlPasserelle;
+        string url = ResoudreUrl();
 
         _ws = new WebSocket(url);
 

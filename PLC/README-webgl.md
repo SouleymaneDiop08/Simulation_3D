@@ -135,6 +135,57 @@ http://localhost:8081
 
 ---
 
+## Où se fait le couplage : projet ou build ?
+
+**Il s'écrit dans le projet Unity, il s'exécute dans le build.** Les deux, donc,
+mais pas au même moment.
+
+`PlcLink` est un composant MonoBehaviour : on l'ajoute à un GameObject et on
+câble les références (`train1`, `aiguillage1`…) dans l'inspecteur. Cela se fait
+**obligatoirement dans le projet, avant de builder**. Un build WebGL est du code
+compilé : on ne peut pas y greffer la liaison après coup.
+
+Le même composant tourne aussi en **Play mode dans l'éditeur** — c'est le même
+code, la même passerelle, le même programme ST. D'où la règle : validez la
+chaîne dans l'éditeur, buildez ensuite.
+
+### Le navigateur ne joint jamais OpenPLC
+
+```
+Navigateur  ──WebSocket──>  Passerelle  ──Modbus TCP──>  OpenPLC
+ (build)                     :8081                        :502
+```
+
+Le navigateur n'a besoin d'atteindre **que la passerelle**. La passerelle est la
+seule à parler Modbus. OpenPLC peut donc tourner sur une autre machine, ou sur un
+autre réseau, du moment que la passerelle l'atteint (`PLC_HOST`).
+
+### Un seul build pour tous les déploiements
+
+Laissez `Url Passerelle` **vide** dans l'inspecteur. `PlcLink` résout alors
+l'adresse au démarrage, dans cet ordre :
+
+| Priorité | Source | Cas d'usage |
+|---|---|---|
+| 1 | `?plc=ws://hote:port` dans l'URL | rediriger un build déjà compilé |
+| 2 | champ de l'inspecteur | forcer une adresse fixe |
+| 3 | origine de la page (`Application.absoluteURL`) | **le cas normal** |
+| 4 | `ws://localhost:8081` | éditeur |
+
+Le point 3 est ce qui compte : la passerelle servant le build, la page et le
+WebSocket partagent hôte et port. Un build ouvert depuis `192.168.1.50:8081` se
+connecte à `ws://192.168.1.50:8081`, et non à `localhost` — qui, sur un poste
+distant, désignerait ce poste lui-même. Le schéma bascule aussi en `wss://` si la
+page est servie en HTTPS, ce qui évite le blocage pour contenu mixte.
+
+Pour rediriger un build sans repasser par Unity :
+
+```
+http://localhost:8081/?plc=ws://192.168.1.42:8081
+```
+
+---
+
 ## Pièges à connaître
 
 **Contenu mixte.** Si un jour vous servez la page en **HTTPS**, le navigateur
