@@ -3845,7 +3845,7 @@ MonoBehaviour:
   zonesVitesseActives: []
   vitesseAutorisee: 999
   distanceTrain: 0
-  distanceEntreWagons: 30
+  distanceEntreWagons: 15.7
   voiePrincipale: {fileID: 276859546}
   voieDeviation: {fileID: 289173534}
 --- !u!4 &1049974605
@@ -9829,7 +9829,7 @@ MonoBehaviour:
   zonesVitesseActives: []
   vitesseAutorisee: 999
   distanceTrain: 0
-  distanceEntreWagons: 30
+  distanceEntreWagons: 15.7
   voiePrincipale: {fileID: 267263528}
   voieDeviation: {fileID: 73770720}
 --- !u!114 &1535455436
@@ -15892,14 +15892,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cameraGenerale: {fileID: 963194227}
+  cadrerAuDemarrage: 1
+  margeCadrage: 2.5
   trains:
   - {fileID: 1049974604}
   - {fileID: 1535455435}
   camerasSuivi: []
   decalageSuivi:
-    x: 0
-    y: 12
-    z: -25
+    x: 6
+    y: 7
+    z: -22
   toucheBascule: 3
   vueActuelle: 0
   nomVueActuelle: 
