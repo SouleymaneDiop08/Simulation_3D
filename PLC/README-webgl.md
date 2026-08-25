@@ -54,16 +54,39 @@ Unity → **Window ▸ Package Manager** → **+** → *Add package from git URL
 https://github.com/endel/NativeWebSocket.git#upm
 ```
 
-### 3. Poser le composant dans la scène
+### 3. Poser les composants dans la scène
 
-Ajoutez `PlcLink` sur un GameObject persistant (celui qui porte `SimulationManager`
-convient) et renseignez dans l'inspecteur :
+Le projet sépare **le poste de commande** (ce qui applique les ordres) du
+**transport** (ce qui les reçoit). Deux composants, donc.
+
+**a. `PosteDeCommande`** — sur un GameObject persistant, celui qui porte
+`SimulationManager` convient. C'est le point d'entrée unique des ordres
+extérieurs :
+
+| Champ | Valeur |
+|---|---|
+| Trains | vos `TrainController`, **dans l'ordre** — indice 0 = train 1 du ST |
+| Aiguillages | vos `AiguillageController` — indice 0 = `AIG1` |
+| Signaux | vos `SignalController` — indice 0 = `SIG1` (facultatif) |
+| Délai Sans Ordre | `2` secondes |
+
+Il fonctionne **sans automate** : au démarrage il serre les freins et ferme les
+signaux, et les y laisse tant qu'aucune source ne s'est manifestée. Un train
+immobile au lancement n'est donc pas un défaut, c'est l'absence de commande.
+
+Pour vérifier le câblage sans rien d'autre : clic droit sur le composant →
+*Essai — traction 50 % sur tous les convois*.
+
+**b. `PlcLink`** — sur le même GameObject. Il ne demande presque rien :
 
 | Champ | Valeur |
 |---|---|
 | Url Passerelle | **laisser vide** (voir « Un seul build » plus bas) |
-| Train 1 / Train 2 | vos deux `TrainController` |
-| Aiguillage 1 / 2 | vos `AiguillageController` |
+| Poste | laisser vide, il prend `PosteDeCommande.Instance` |
+
+Ce découpage a une conséquence utile : changer de transport — HTTP au lieu de
+WebSocket, port série, autre protocole — ne demande que de réécrire `PlcLink`.
+Le reste de la simulation ne connaît pas l'automate.
 
 ### 4. Démarrer OpenPLC
 

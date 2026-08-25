@@ -5,21 +5,30 @@ using NativeWebSocket;
 
 
 /// <summary>
-/// Reception des ordres de l'automate OpenPLC, via la passerelle WebSocket.
+/// Transport : reçoit les trames de la passerelle et les remet au
+/// PosteDeCommande. Rien d'autre.
+///
+/// Toute la logique métier — conversion d'unités, détection de front, repli en
+/// sécurité — vit dans PosteDeCommande. Ce script ne connaît ni TrainController
+/// ni TrainPhysicsController : il traduit du JSON en CommandeTrain et délègue.
+/// Changer de transport (HTTP, port série, autre protocole) ne demande donc que
+/// de réécrire ce fichier.
 ///
 /// Compatible WebGL : un build navigateur ne peut pas ouvrir de socket TCP,
 /// donc pas de Modbus direct. C'est la passerelle Node.js (PLC/bridge) qui
-/// interroge OpenPLC et rediffuse l'etat ici en JSON.
+/// interroge OpenPLC et rediffuse l'état ici.
 ///
-/// Remplace l'ancien PLCConnection.cs, qui s'appuyait sur websocket-sharp
-/// (incompatible WebGL) et pointait sur le port de l'interface web d'OpenPLC.
+/// PRÉREQUIS : le paquet NativeWebSocket doit être installé avant de placer ce
+/// fichier dans Assets/ — sinon le projet ne compile pas.
+///   Package Manager → + → Add package from git URL →
+///   https://github.com/endel/NativeWebSocket.git#upm
 /// </summary>
 public class PlcLink : MonoBehaviour
 {
     // ======================================================================
-    // TRAME RECUE
-    // Champs a plat : JsonUtility ne gere ni dictionnaires ni polymorphisme.
-    // Les noms doivent correspondre exactement a ceux emis par bridge.js.
+    // TRAME REÇUE
+    // Champs à plat : JsonUtility ne gère ni dictionnaires ni polymorphisme.
+    // Les noms doivent correspondre exactement à ceux émis par bridge.js.
     // ======================================================================
 
     [Serializable]
@@ -29,7 +38,7 @@ public class PlcLink : MonoBehaviour
         public bool plc;            // false = automate injoignable
         public string err;
 
-        public bool hb;             // heartbeat, bascule a 1 Hz
+        public bool hb;             // heartbeat, bascule à 1 Hz
         public int etape;
         public bool scenario;
 
@@ -37,7 +46,7 @@ public class PlcLink : MonoBehaviour
         public bool t1_fs;          // frein de service
         public bool t1_fu;          // frein d'urgence
         public bool t1_av;          // sens avant
-        public bool t1_ar;          // sens arriere
+        public bool t1_ar;          // sens arrière
         public int t1_vlim;         // km/h
 
         public int t2_traction;
@@ -47,10 +56,10 @@ public class PlcLink : MonoBehaviour
         public bool t2_ar;
         public int t2_vlim;
 
-        public bool aig1;           // true = deviation
+        public bool aig1;           // true = déviation
         public bool aig2;
 
-        public int sig1;            // 0 carre, 1 avertissement, 2 voie libre
+        public int sig1;            // 0 carré, 1 avertissement, 2 voie libre
         public int sig2;
     }
 
@@ -60,36 +69,30 @@ public class PlcLink : MonoBehaviour
     // ======================================================================
 
     [Header("Passerelle")]
-    [Tooltip("Laisser VIDE en production : l'adresse est alors deduite de la page " +
+    [Tooltip("Laisser VIDE en production : l'adresse est alors déduite de la page " +
              "qui sert le build, donc un seul build fonctionne en local, sur le " +
-             "reseau et derriere HTTPS. Ne remplir que pour forcer une adresse.")]
+             "réseau et derrière HTTPS. Ne remplir que pour forcer une adresse.")]
     public string urlPasserelle = "";
 
-    [Tooltip("Secondes sans battement avant de considerer la liaison perdue.")]
+    [Tooltip("Secondes sans battement avant de considérer l'automate perdu.")]
     public float delaiChienDeGarde = 2f;
 
     public float delaiReconnexion = 3f;
 
 
-    [Header("Trains")]
-    public TrainController train1;
-    public TrainController train2;
-
-
-    [Header("Aiguillages")]
-    public AiguillageController aiguillage1;
-    public AiguillageController aiguillage2;
+    [Header("Poste de commande")]
+    [Tooltip("Laisser vide pour utiliser PosteDeCommande.Instance.")]
+    public PosteDeCommande poste;
 
 
     [Header("Diagnostic (lecture seule)")]
     public bool connecte;
-    public bool automateVivant;
     public int etapeCourante;
     public string derniereErreur = "";
 
 
     // ======================================================================
-    // ETAT INTERNE
+    // ÉTAT INTERNE
     // ======================================================================
 
     private WebSocket _ws;
@@ -98,15 +101,7 @@ public class PlcLink : MonoBehaviour
 
     private bool _hbPrecedent;
     private float _hbDernierChangement;
-
-    // Memorisation pour n'agir que sur changement : les methodes des
-    // controleurs journalisent, les appeler a 50 Hz noierait la console.
-    private int _t1TractionPrec = -1;
-    private int _t2TractionPrec = -1;
-    private bool _t1FsPrec, _t1FuPrec, _t2FsPrec, _t2FuPrec;
-    private bool _aig1Prec, _aig2Prec;
-    private bool _premiereApplication = true;
-    private bool _urgenceAppliquee;
+    private bool _battementPerdu;
 
 
     // ======================================================================
@@ -115,6 +110,18 @@ public class PlcLink : MonoBehaviour
 
     private async void Start()
     {
+        if (poste == null)
+            poste = PosteDeCommande.Instance;
+
+        if (poste == null)
+        {
+            Debug.LogError("[PLC] Aucun PosteDeCommande dans la scène : liaison inutile.", this);
+            enabled = false;
+            return;
+        }
+
+        poste.DeclarerSource("OpenPLC (passerelle WebSocket)");
+
         _hbDernierChangement = Time.unscaledTime;
         await Connecter();
     }
@@ -122,9 +129,9 @@ public class PlcLink : MonoBehaviour
 
     private void Update()
     {
-        // Hors WebGL, NativeWebSocket met les messages en file d'attente et
-        // il faut les depiler soi-meme. En WebGL les rappels viennent
-        // directement de JavaScript, sur le thread principal.
+        // Hors WebGL, NativeWebSocket met les messages en file d'attente et il
+        // faut les dépiler soi-même. En WebGL les rappels viennent directement
+        // de JavaScript, sur le thread principal.
 #if !UNITY_WEBGL || UNITY_EDITOR
         _ws?.DispatchMessageQueue();
 #endif
@@ -133,23 +140,23 @@ public class PlcLink : MonoBehaviour
 
     private void FixedUpdate()
     {
-        SurveillerLiaison();
+        SurveillerBattement();
 
-        if (_nouvelleTrame && _trame != null)
-        {
-            _nouvelleTrame = false;
-            AppliquerTrame(_trame);
-        }
+        if (!_nouvelleTrame || _trame == null)
+            return;
+
+        _nouvelleTrame = false;
+        AppliquerTrame(_trame);
     }
 
 
     private async void OnDestroy()
     {
-        if (_ws != null)
-        {
-            try { await _ws.Close(); }
-            catch (Exception) { /* socket deja fermee */ }
-        }
+        if (_ws == null)
+            return;
+
+        try { await _ws.Close(); }
+        catch (Exception) { /* socket déjà fermée */ }
     }
 
 
@@ -158,18 +165,18 @@ public class PlcLink : MonoBehaviour
     // ======================================================================
 
     /// <summary>
-    /// Determine l'adresse de la passerelle, par ordre de priorite :
+    /// Détermine l'adresse de la passerelle, par ordre de priorité :
     ///
-    ///   1. parametre d'URL ?plc=...  — permet de rediriger un build deja
-    ///      compile, sans repasser par Unity ;
+    ///   1. paramètre d'URL ?plc=...  — permet de rediriger un build déjà
+    ///      compilé, sans repasser par Unity ;
     ///   2. le champ de l'inspecteur, s'il est rempli ;
-    ///   3. l'origine de la page qui sert le build (WebGL) — meme hote, meme
+    ///   3. l'origine de la page qui sert le build (WebGL) — même hôte, même
     ///      port, et wss:// automatiquement si la page est en HTTPS ;
-    ///   4. localhost, pour l'editeur.
+    ///   4. localhost, pour l'éditeur.
     ///
-    /// Sans le point 3, un build compile avec "localhost" ne fonctionnerait que
-    /// sur la machine qui l'heberge : tout poste distant chercherait la
-    /// passerelle sur lui-meme.
+    /// Sans le point 3, un build compilé avec « localhost » ne fonctionnerait
+    /// que sur la machine qui l'héberge : tout poste distant chercherait la
+    /// passerelle sur lui-même.
     /// </summary>
     private string ResoudreUrl()
     {
@@ -180,25 +187,25 @@ public class PlcLink : MonoBehaviour
         {
             try
             {
-                System.Uri uri = new System.Uri(page);
+                Uri uri = new Uri(page);
 
                 // 1. Redirection explicite par la barre d'adresse
                 foreach (string couple in uri.Query.TrimStart('?').Split('&'))
                 {
                     if (couple.StartsWith("plc="))
-                        return System.Uri.UnescapeDataString(couple.Substring(4));
+                        return Uri.UnescapeDataString(couple.Substring(4));
                 }
 
                 // 2. Champ de l'inspecteur
                 if (!string.IsNullOrEmpty(urlPasserelle))
                     return urlPasserelle;
 
-                // 3. Meme origine que la page. Une page en HTTPS impose wss://,
+                // 3. Même origine que la page. Une page en HTTPS impose wss://,
                 //    sinon le navigateur bloque la connexion.
                 string schema = uri.Scheme == "https" ? "wss" : "ws";
                 return $"{schema}://{uri.Host}:{uri.Port}";
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
                 Debug.LogWarning("[PLC] URL de page illisible : " + e.Message);
             }
@@ -223,7 +230,7 @@ public class PlcLink : MonoBehaviour
             connecte = true;
             derniereErreur = "";
             _hbDernierChangement = Time.unscaledTime;
-            Debug.Log("[PLC] Connecte a la passerelle : " + url);
+            Debug.Log("[PLC] Connecté à la passerelle : " + url, this);
         };
 
         _ws.OnMessage += (octets) =>
@@ -231,27 +238,27 @@ public class PlcLink : MonoBehaviour
             try
             {
                 _trame = JsonUtility.FromJson<TramePlc>(
-                    System.Text.Encoding.UTF8.GetString(octets)
-                );
+                    System.Text.Encoding.UTF8.GetString(octets));
                 _nouvelleTrame = true;
             }
             catch (Exception e)
             {
-                Debug.LogWarning("[PLC] Trame illisible : " + e.Message);
+                Debug.LogWarning("[PLC] Trame illisible : " + e.Message, this);
             }
         };
 
         _ws.OnError += (msg) =>
         {
             derniereErreur = msg;
-            Debug.LogError("[PLC] Erreur WebSocket : " + msg);
+            Debug.LogError("[PLC] Erreur WebSocket : " + msg, this);
         };
 
         _ws.OnClose += (code) =>
         {
             connecte = false;
-            Debug.LogWarning("[PLC] Passerelle deconnectee (" + code + ")");
-            AppliquerUrgence("liaison passerelle perdue");
+            Debug.LogWarning("[PLC] Passerelle déconnectée (" + code + ")", this);
+
+            poste.ReplierEnSecurite("liaison passerelle perdue");
 
             if (isActiveAndEnabled)
                 StartCoroutine(Reconnecter());
@@ -267,67 +274,46 @@ public class PlcLink : MonoBehaviour
 
         if (!connecte)
         {
-            Debug.Log("[PLC] Tentative de reconnexion...");
+            Debug.Log("[PLC] Tentative de reconnexion...", this);
             _ = Connecter();
         }
     }
 
 
     // ======================================================================
-    // CHIEN DE GARDE
+    // CHIEN DE GARDE DU BATTEMENT
     // ======================================================================
 
     /// <summary>
-    /// Le heartbeat vient du programme .st et traverse toute la chaine.
-    /// S'il se fige, c'est qu'un maillon est tombe : automate arrete,
-    /// passerelle coupee ou reseau perdu. Dans tous les cas, on freine.
-    /// Sans ce mecanisme, le train reste lance sur le dernier ordre recu.
+    /// Le heartbeat vient du programme ST et traverse toute la chaîne. S'il se
+    /// fige alors que la liaison est ouverte, c'est que l'automate lui-même
+    /// s'est arrêté : la passerelle continuerait à émettre sans que rien ne
+    /// change.
+    ///
+    /// PosteDeCommande a son propre chien de garde sur l'arrivée des trames.
+    /// Celui-ci couvre le cas différent d'une trame qui arrive mais qui est
+    /// périmée.
     /// </summary>
-    private void SurveillerLiaison()
+    private void SurveillerBattement()
     {
-        bool vivantAvant = automateVivant;
-
         if (!connecte)
-        {
-            automateVivant = false;
-        }
-        else
-        {
-            float silence = Time.unscaledTime - _hbDernierChangement;
-            automateVivant = silence <= delaiChienDeGarde;
-        }
-
-        if (vivantAvant && !automateVivant)
-        {
-            AppliquerUrgence("chien de garde : plus de battement automate");
-        }
-    }
-
-
-    private void AppliquerUrgence(string motif)
-    {
-        if (_urgenceAppliquee)
             return;
 
-        _urgenceAppliquee = true;
+        bool perdu = Time.unscaledTime - _hbDernierChangement > delaiChienDeGarde;
 
-        Debug.LogWarning("[PLC] FREIN D'URGENCE - " + motif);
+        if (perdu && !_battementPerdu)
+            poste.ReplierEnSecurite("automate figé : plus de battement");
 
-        if (train1 != null && train1.physics != null) train1.physics.FreinUrgence();
-        if (train2 != null && train2.physics != null) train2.physics.FreinUrgence();
-
-        // Force la reapplication complete au retour de la liaison
-        _premiereApplication = true;
+        _battementPerdu = perdu;
     }
 
 
     // ======================================================================
-    // APPLICATION DES ORDRES
+    // TRADUCTION ET REMISE AU POSTE
     // ======================================================================
 
     private void AppliquerTrame(TramePlc t)
     {
-        // Suivi du battement
         if (t.hb != _hbPrecedent)
         {
             _hbPrecedent = t.hb;
@@ -340,95 +326,41 @@ public class PlcLink : MonoBehaviour
         if (!t.plc)
         {
             derniereErreur = t.err;
-            AppliquerUrgence("automate injoignable : " + t.err);
+            poste.ReplierEnSecurite("automate injoignable : " + t.err);
             return;
         }
 
-        if (!automateVivant)
+        if (_battementPerdu)
             return;
 
-        _urgenceAppliquee = false;
+        poste.SignalerVie();
 
-        AppliquerTrain(train1, t.t1_traction, t.t1_fs, t.t1_fu, t.t1_av, t.t1_ar, t.t1_vlim,
-                       ref _t1TractionPrec, ref _t1FsPrec, ref _t1FuPrec);
-
-        AppliquerTrain(train2, t.t2_traction, t.t2_fs, t.t2_fu, t.t2_av, t.t2_ar, t.t2_vlim,
-                       ref _t2TractionPrec, ref _t2FsPrec, ref _t2FuPrec);
-
-        AppliquerAiguillage(aiguillage1, t.aig1, ref _aig1Prec);
-        AppliquerAiguillage(aiguillage2, t.aig2, ref _aig2Prec);
-
-        _premiereApplication = false;
-    }
-
-
-    private void AppliquerTrain(
-        TrainController train,
-        int traction, bool freinService, bool freinUrgence,
-        bool sensAvant, bool sensArriere, int vitesseLimite,
-        ref int tractionPrec, ref bool fsPrec, ref bool fuPrec)
-    {
-        if (train == null || train.physics == null)
-            return;
-
-        // ---- Sens ----
-        if (sensAvant && !sensArriere)
-            train.sens = TrainController.SensTrain.Avant;
-        else if (sensArriere && !sensAvant)
-            train.sens = TrainController.SensTrain.Arriere;
-        else
-            train.sens = TrainController.SensTrain.Neutre;
-
-        // ---- Vitesse autorisee ----
-        // L'automate emet des km/h, la simulation travaille en m/s.
-        train.vitesseAutorisee = vitesseLimite / TrainController.MS_VERS_KMH;
-
-        // ---- Freins et traction ----
-        bool changement = _premiereApplication
-                          || freinUrgence != fuPrec
-                          || freinService != fsPrec
-                          || traction != tractionPrec;
-
-        if (changement)
+        poste.AppliquerTrain(0, new CommandeTrain
         {
-            if (freinUrgence)
-            {
-                train.physics.FreinUrgence();
-            }
-            else if (freinService)
-            {
-                train.physics.FreinService();
-            }
-            else
-            {
-                // Le desserrage est explicite : ChangerTraction() ne touche
-                // plus a l'etat de frein, pour qu'une consigne de traction ne
-                // puisse pas annuler un freinage d'urgence par inadvertance.
-                train.physics.RelacherFrein();
-                train.physics.ChangerTraction(traction / 1000f);
-            }
-        }
+            tractionPourMille = t.t1_traction,
+            freinService = t.t1_fs,
+            freinUrgence = t.t1_fu,
+            sensAvant = t.t1_av,
+            sensArriere = t.t1_ar,
+            vitesseLimiteKmh = t.t1_vlim
+        });
 
-        fuPrec = freinUrgence;
-        fsPrec = freinService;
-        tractionPrec = traction;
-    }
+        poste.AppliquerTrain(1, new CommandeTrain
+        {
+            tractionPourMille = t.t2_traction,
+            freinService = t.t2_fs,
+            freinUrgence = t.t2_fu,
+            sensAvant = t.t2_av,
+            sensArriere = t.t2_ar,
+            vitesseLimiteKmh = t.t2_vlim
+        });
 
+        poste.CommanderAiguille(0, t.aig1);
+        poste.CommanderAiguille(1, t.aig2);
 
-    private void AppliquerAiguillage(
-        AiguillageController aiguillage, bool deviation, ref bool precedent)
-    {
-        if (aiguillage == null)
-            return;
+        poste.CommanderSignal(0, SignalController.DepuisEntier(t.sig1));
+        poste.CommanderSignal(1, SignalController.DepuisEntier(t.sig2));
 
-        if (!_premiereApplication && deviation == precedent)
-            return;
-
-        if (deviation)
-            aiguillage.ActiverDeviation();
-        else
-            aiguillage.ActiverPrincipale();
-
-        precedent = deviation;
+        poste.TerminerTrame();
     }
 }
