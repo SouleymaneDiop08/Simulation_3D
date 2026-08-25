@@ -21,6 +21,9 @@ services:
   plc:
     build:
       context: ./openplc
+      # Certains hôtes ne fournissent pas de DNS au conteneur de build.
+      # Retirer cette ligne si votre Docker refuse le réseau hôte au build.
+      network: host
     container_name: sf-plc
     hostname: plc
     ports:
@@ -46,6 +49,7 @@ services:
   bridge:
     build:
       context: ./bridge
+      network: host
     container_name: sf-bridge
     hostname: bridge
     depends_on:

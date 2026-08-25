@@ -88,6 +88,19 @@ deviendra dès que le freinage aura une dynamique propre.
 
 ---
 
+## Contrainte MatIEC à connaître
+
+**Les variables localisées (`AT %...`) et les variables ordinaires ne peuvent pas
+cohabiter dans un même bloc `VAR`.** MatIEC rejette le mélange avec une cascade
+d'erreurs « invalid located variable declaration », suivies de dizaines
+d'erreurs de syntaxe sans rapport apparent, dans le corps du programme.
+
+Le programme est donc structuré en deux blocs distincts : un pour les
+entrées/sorties localisées, un pour les variables internes. Ne les fusionnez
+pas.
+
+---
+
 ## Points de vigilance
 
 **Cadence.** La `TASK` est à 50 ms, votre `Fixed Timestep` Unity est à 0,02 s. Scrutez à

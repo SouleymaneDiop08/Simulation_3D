@@ -123,11 +123,18 @@ VAR
     Etape             AT %QW10 : UINT;   (* etape courante du scenario *)
     Heartbeat         AT %QX2.0 : BOOL;  (* bascule a 1 Hz *)
     ScenarioActif     AT %QX2.1 : BOOL;
+END_VAR
 
 
-    (* ==============================================================
-       VARIABLES INTERNES
-       ============================================================== *)
+(* ==================================================================
+   VARIABLES INTERNES
+   ------------------------------------------------------------------
+   Bloc VAR distinct, et ce n'est pas cosmetique : MatIEC refuse de
+   melanger des variables localisees (AT %...) et des variables
+   ordinaires dans un meme bloc. Les regrouper produit une cascade
+   d'erreurs « invalid located variable declaration ».
+   ================================================================== *)
+VAR
     ConsigneT1   : UINT;      (* cible de la rampe train 1 *)
     ConsigneT2   : UINT;
     RampeT1      : RAMPE_UINT;
