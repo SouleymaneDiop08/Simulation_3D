@@ -30,11 +30,19 @@ public class TrackSystem : MonoBehaviour
     /// <summary>Faux tant que la table n'a pas pu être construite.</summary>
     public bool Pret => _pret;
 
+    /// <summary>Volume englobant le tracé, en coordonnées monde.</summary>
+    public Bounds Bornes => _bornes;
+
+    /// <summary>Premier et dernier point du tracé, en coordonnées monde.</summary>
+    public Vector3 PointDebut => _pret ? _points[0] : transform.position;
+    public Vector3 PointFin => _pret ? _points[_points.Length - 1] : transform.position;
+
 
     private Vector3[] _points;   // positions monde échantillonnées
     private float[] _cumul;      // distance cumulée à chaque échantillon
     private float _longueur;
     private bool _pret;
+    private Bounds _bornes;
 
 
     private void Awake()
@@ -80,6 +88,7 @@ public class TrackSystem : MonoBehaviour
 
         _points[0] = repere.TransformPoint(splineContainer.Spline.EvaluatePosition(0f));
         _cumul[0] = 0f;
+        _bornes = new Bounds(_points[0], Vector3.zero);
 
         for (int i = 1; i <= n; i++)
         {
@@ -87,6 +96,7 @@ public class TrackSystem : MonoBehaviour
 
             _points[i] = repere.TransformPoint(splineContainer.Spline.EvaluatePosition(t));
             _cumul[i] = _cumul[i - 1] + Vector3.Distance(_points[i - 1], _points[i]);
+            _bornes.Encapsulate(_points[i]);
         }
 
         _longueur = _cumul[n];

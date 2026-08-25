@@ -15893,7 +15893,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cameraGenerale: {fileID: 963194227}
   cadrerAuDemarrage: 1
-  margeCadrage: 2.5
+  reculCadrage: 0.65
+  hauteurCadrage: 0.16
   trains:
   - {fileID: 1049974604}
   - {fileID: 1535455435}

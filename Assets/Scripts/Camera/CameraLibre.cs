@@ -197,6 +197,58 @@ public class CameraLibre : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// Cadre une installation allongée — une ligne de chemin de fer — en se
+    /// plaçant dans son axe, en retrait et en hauteur.
+    ///
+    /// Un cadrage sphérique classique placerait la caméra perpendiculairement
+    /// au tracé : on verrait la ligne de côté, écrasée. En se plaçant dans
+    /// l'axe, la perspective fait converger les voies vers l'horizon et les
+    /// deux extrémités tiennent dans l'image.
+    /// </summary>
+    /// <param name="axe">Direction horizontale de la ligne, normalisée.</param>
+    /// <param name="reculRelatif">Recul derrière l'extrémité, en fraction de la longueur.</param>
+    /// <param name="hauteurRelative">Altitude de la caméra, en fraction de la longueur.</param>
+    public void CadrerLigne(Bounds sujet, Vector3 axe,
+                            float reculRelatif = 0.65f,
+                            float hauteurRelative = 0.16f)
+    {
+        _dernierSujet = sujet;
+        _sujetConnu = true;
+
+        if (_camera == null)
+            _camera = GetComponent<Camera>();
+
+        axe.y = 0f;
+
+        if (axe.sqrMagnitude < 1e-4f)
+        {
+            Cadrer(sujet);
+            return;
+        }
+
+        axe.Normalize();
+
+        // Longueur de la ligne mesurée le long de son propre axe
+        float longueur = Mathf.Abs(Vector3.Dot(sujet.size, axe)) +
+                         Mathf.Abs(Vector3.Dot(sujet.size, Vector3.Cross(axe, Vector3.up))) * 0.25f;
+
+        longueur = Mathf.Max(longueur, 50f);
+
+        Vector3 centre = sujet.center;
+
+        transform.position = centre
+                             - axe * (longueur * reculRelatif)
+                             + Vector3.up * (longueur * hauteurRelative);
+
+        transform.LookAt(centre, Vector3.up);
+        LireAnglesActuels();
+
+        // Sans cela, le fond de la ligne serait tronqué par le plan lointain
+        _camera.farClipPlane = Mathf.Max(_camera.farClipPlane, longueur * 3f);
+    }
+
+
     /// <summary>Mémorise le sujet à recadrer avec F, sans bouger la caméra.</summary>
     public void DefinirSujet(Bounds sujet)
     {

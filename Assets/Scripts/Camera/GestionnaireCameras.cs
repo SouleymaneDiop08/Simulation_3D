@@ -22,9 +22,13 @@ public class GestionnaireCameras : MonoBehaviour
     [Tooltip("Recadrer sur les convois au démarrage.")]
     public bool cadrerAuDemarrage = true;
 
-    [Tooltip("Marge autour du sujet lors du cadrage initial. Augmenter pour " +
-             "embrasser aussi les voies alentour.")]
-    public float margeCadrage = 2.5f;
+    [Tooltip("Recul de la caméra derrière l'extrémité de la ligne, en fraction " +
+             "de sa longueur. Augmenter pour prendre du champ.")]
+    public float reculCadrage = 0.65f;
+
+    [Tooltip("Altitude de la caméra, en fraction de la longueur de la ligne. " +
+             "Augmenter pour une vue plus plongeante.")]
+    public float hauteurCadrage = 0.16f;
 
 
     [Header("Convois à suivre")]
@@ -73,7 +77,6 @@ public class GestionnaireCameras : MonoBehaviour
         if (_libre == null)
             _libre = cameraGenerale.gameObject.AddComponent<CameraLibre>();
 
-        _libre.margeCadrage = margeCadrage;
 
         ConstruireCamerasSuivi();
 
@@ -89,14 +92,10 @@ public class GestionnaireCameras : MonoBehaviour
 
     private void Start()
     {
-        // En Start, et non en Awake : les convois doivent avoir placé leurs
-        // wagons sur la voie, sinon on cadrerait leur position d'édition.
-        if (cadrerAuDemarrage && CalculerBornesConvois(out Bounds bornes))
-            _libre.Cadrer(bornes);
-        else if (CalculerBornesVoies(out Bounds voies))
-            _libre.Cadrer(voies);
-        else
-            Debug.LogWarning("[Caméras] Rien à cadrer : ni convoi ni voie trouvés.", this);
+        // En Start, et non en Awake : les voies doivent avoir construit leur
+        // table d'échantillons, et les convois posé leurs wagons.
+        if (cadrerAuDemarrage)
+            CadrerSurLaLigne();
 
         ActiverVue(0);
     }
@@ -141,11 +140,22 @@ public class GestionnaireCameras : MonoBehaviour
     }
 
 
-    /// <summary>Repli : volume englobant les voies, si aucun convoi n'est visible.</summary>
-    private bool CalculerBornesVoies(out Bounds bornes)
+    /// <summary>
+    /// Place la caméra dans l'axe de la ligne, de façon à embrasser tout le
+    /// tracé — donc les deux gares, qui en occupent les extrémités.
+    ///
+    /// Les gares sont noyées dans le mesh d'environnement et ne peuvent pas
+    /// être retrouvées par leur nom ; les voies, elles, sont connues, et elles
+    /// vont d'une gare à l'autre. Cadrer la ligne revient donc à cadrer les
+    /// deux gares.
+    /// </summary>
+    private void CadrerSurLaLigne()
     {
-        bornes = new Bounds();
+        Bounds bornes = new Bounds();
         bool commence = false;
+
+        Vector3 axe = Vector3.zero;
+        float plusLongue = 0f;
 
         // Surcharge sans FindObjectsSortMode : celle qui prend le mode de tri
         // est dépréciée depuis Unity 6.
@@ -154,24 +164,42 @@ public class GestionnaireCameras : MonoBehaviour
             if (voie == null || !voie.Pret)
                 continue;
 
-            // Trois points suffisent à cerner grossièrement le tracé
-            for (int i = 0; i <= 2; i++)
+            if (!commence)
             {
-                Vector3 p = voie.GetPosition(voie.Longueur * i / 2f);
+                bornes = voie.Bornes;
+                commence = true;
+            }
+            else
+            {
+                bornes.Encapsulate(voie.Bornes);
+            }
 
-                if (!commence)
-                {
-                    bornes = new Bounds(p, Vector3.one);
-                    commence = true;
-                }
-                else
-                {
-                    bornes.Encapsulate(p);
-                }
+            // L'axe est donné par la voie la plus longue : c'est elle qui
+            // porte la direction générale de la ligne.
+            if (voie.Longueur > plusLongue)
+            {
+                plusLongue = voie.Longueur;
+                axe = voie.PointFin - voie.PointDebut;
             }
         }
 
-        return commence;
+        // Les convois font partie du sujet, même s'ils sont hors du tracé
+        if (CalculerBornesConvois(out Bounds convois))
+        {
+            if (!commence) { bornes = convois; commence = true; }
+            else bornes.Encapsulate(convois);
+        }
+
+        if (!commence)
+        {
+            Debug.LogWarning("[Caméras] Rien à cadrer : ni voie ni convoi trouvés.", this);
+            return;
+        }
+
+        _libre.CadrerLigne(bornes, axe, reculCadrage, hauteurCadrage);
+
+        Debug.Log($"[Caméras] Ligne cadrée : {bornes.size.magnitude:0} m de diagonale, " +
+                  $"centre {bornes.center}", this);
     }
 
 
