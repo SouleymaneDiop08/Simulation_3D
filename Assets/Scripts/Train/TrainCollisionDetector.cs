@@ -74,6 +74,14 @@ public class TrainCollisionDetector : MonoBehaviour
             if (autre.train == null || autre.train == train)
                 continue;
 
+            // Deux convois sur des voies différentes ne peuvent pas se
+            // heurter. Sans ce test, les voies parallèles de la scène —
+            // distantes de 5,6 m seulement, pour un seuil de détection de
+            // 5 m — provoquaient un faux choc au croisement des navettes :
+            // le convoi passait en Impact puis en Bloque, état sans retour.
+            if (autre.train.trackSystem != train.trackSystem)
+                continue;
+
             float distanceCarree =
                 (autre.transform.position - transform.position).sqrMagnitude;
 

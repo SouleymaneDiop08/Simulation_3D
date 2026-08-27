@@ -311,15 +311,43 @@ VAR CONSTANT
     AVERTISSEMENT: UINT  := 1;   (* prochain signal ferme *)
     VOIE_LIBRE   : UINT  := 2;
 
-    (* ---- Calibrage de l'exploitation ----
-       A 600 pour mille et vitesseMax = 25 m/s cote simulation, la marche
-       se fait a 15 m/s : 90 s donnent environ 1350 m, largement en deca
-       des 1860 m de voie. Augmenter DUREE_MARCHE ferait buter les convois
-       en bout de voie, l'automate n'ayant aucun retour de position. *)
-    TRACTION_MARCHE  : UINT  := 600;
+    (* ================================================================
+       CALIBRAGE DE L'EXPLOITATION
+       ----------------------------------------------------------------
+       Mesure relevee sur la scene Unity :
+
+         longueur de voie          1860 m   (gare A z=616 -> gare B z=2476)
+         longueur d'un convoi        63 m   (4 intervalles de 15,7 m)
+         course utile              1797 m
+
+       Cinematique cote simulation :
+
+         vitesseMax                  25 m/s
+         traction 700 pour mille -> 17,5 m/s en croisiere
+         acceleration                 5 m/s2  (3,5 s pour atteindre 17,5)
+         frein de service             8 m/s2
+
+       Distance parcourue sur une etape de marche de 95 s :
+
+         17,5 x (95 - 3,5)  =  1601 m      (montee en vitesse comprise)
+         approche 12 s a 5 m/s ............   70 m
+         freinage d'arret .................    2 m
+                                          --------
+                                            1673 m   sur 1797 utiles
+
+       Il reste donc environ 120 m de marge avant le heurtoir.
+
+       L'automate n'a AUCUN retour de position : ces durees sont la seule
+       chose qui empeche les convois de buter en bout de voie. Augmenter
+       DUREE_MARCHE sans refaire ce calcul les y enverrait, et l'etat
+       FinDeVoie est sans retour cote simulation.
+       ================================================================ *)
+    LONGUEUR_VOIE    : UINT  := 1860;  (* m, pour memoire *)
+
+    TRACTION_MARCHE  : UINT  := 700;
     VITESSE_LIGNE    : UINT  := 90;    (* km/h affiches en cabine *)
     VITESSE_APPROCHE : UINT  := 30;
-    DUREE_MARCHE     : UDINT := 90000; (* ms *)
+    DUREE_MARCHE     : UDINT := 95000; (* ms *)
 
     (* Decalage entre les deux navettes, pour qu'elles ne soient jamais
        en phase et que la ligne paraisse vivante. *)
