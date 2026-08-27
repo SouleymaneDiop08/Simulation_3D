@@ -88,16 +88,38 @@ deviendra dès que le freinage aura une dynamique propre.
 
 ---
 
-## Contrainte MatIEC à connaître
+## Deux contraintes d'écriture du `.st`
 
-**Les variables localisées (`AT %...`) et les variables ordinaires ne peuvent pas
-cohabiter dans un même bloc `VAR`.** MatIEC rejette le mélange avec une cascade
+**MatIEC refuse de mélanger, dans un même bloc `VAR`, les variables localisées
+(`AT %...`) et les variables ordinaires.** Le mélange produit une cascade
 d'erreurs « invalid located variable declaration », suivies de dizaines
-d'erreurs de syntaxe sans rapport apparent, dans le corps du programme.
+d'erreurs de syntaxe sans rapport apparent dans le corps du programme. Le
+programme est donc structuré en blocs distincts. Ne les fusionnez pas.
 
-Le programme est donc structuré en deux blocs distincts : un pour les
-entrées/sorties localisées, un pour les variables internes. Ne les fusionnez
-pas.
+**La page Monitoring d'OpenPLC analyse les déclarations avec un parseur
+rudimentaire** (`webserver/monitoring.py`) :
+
+```python
+if line.find(' AT ') > 0 and line.find('%') > 0 and line.find('(*') < 0:
+    tmp = line.strip().split(' ')
+    debug_data.type = tmp[4].split(';')[0]
+```
+
+`split(' ')` sur des espaces **consécutifs** insère des chaînes vides qui
+décalent les indices : la colonne Type affiche alors `AT`, ou l'adresse, ou
+rien. Et toute ligne portant un commentaire est **purement ignorée** — la
+variable disparaît de la page.
+
+Trois règles pour les blocs `VAR`, donc :
+
+- **un seul espace** entre chaque élément de la déclaration ;
+- **jamais de commentaire** sur la ligne d'une déclaration ;
+- **`INT` et `BOOL` exclusivement**.
+
+Corollaire : les durées du séquenceur sont comptées en **cycles de scrutation**
+(50 ms) et non en millisecondes, ce qui les maintient dans la plage d'un `INT`.
+Et le chien de garde utilise un compteur plutôt qu'un bloc `TON`, ce qui évite
+le type `TIME`.
 
 ---
 
