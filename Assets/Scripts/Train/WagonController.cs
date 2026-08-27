@@ -33,6 +33,38 @@ public class WagonController : MonoBehaviour
     public Quaternion derailRotation = Quaternion.identity;
 
 
+    private Renderer[] _rendus;
+    private bool _rendusCherches;
+
+
+    /// <summary>
+    /// Volume englobant la caisse, en coordonnées monde, réévalué à chaque
+    /// appel puisque le wagon bouge. Les Renderer sont mémorisés une fois :
+    /// les rechercher à chaque image coûterait plus cher que le calcul.
+    /// </summary>
+    public Bounds BornesMonde
+    {
+        get
+        {
+            if (!_rendusCherches)
+            {
+                _rendus = GetComponentsInChildren<Renderer>();
+                _rendusCherches = true;
+            }
+
+            if (_rendus == null || _rendus.Length == 0)
+                return new Bounds(transform.position, Vector3.one * 2f);
+
+            Bounds bornes = _rendus[0].bounds;
+
+            for (int i = 1; i < _rendus.Length; i++)
+                bornes.Encapsulate(_rendus[i].bounds);
+
+            return bornes;
+        }
+    }
+
+
     public void SetTrack(TrackSystem track)
     {
         trackSystem = track;

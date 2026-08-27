@@ -20,10 +20,12 @@ public class TrainCollisionDetector : MonoBehaviour
 
 
     [Header("Détection")]
-    [Tooltip("Recouvrement le long de la voie déclenchant le choc, en mètres. " +
-             "Mesuré sur la distance curviligne, donc valable quel que soit " +
-             "le sens de marche des deux convois.")]
-    public float distanceDetection = 20f;
+    [Tooltip("Marge ajoutée au volume de chaque caisse, en mètres. Le choc se " +
+             "déclenche quand les volumes ainsi élargis se recouvrent, donc " +
+             "juste avant que les modèles ne s'interpénètrent visuellement. " +
+             "À ne pas monter au-delà de 1,7 m : c'est le jeu qui sépare deux " +
+             "caisses se croisant sur les voies parallèles de la scène.")]
+    public float margeContact = 1f;
 
     [Tooltip("Secondes ignorées après le démarrage. Le temps que chaque convoi " +
              "soit posé sur sa voie, les wagons occupent encore leur position " +
@@ -94,37 +96,67 @@ public class TrainCollisionDetector : MonoBehaviour
             if (autre.train == train)
                 continue;
 
-            // Deux convois sur des voies différentes ne peuvent pas se
-            // heurter, si proches soient-ils : les voies parallèles de la
-            // scène ne sont distantes que de 5,6 m et se croisaient sans
-            // arrêt. Le choc n'a de sens que sur le MÊME rail.
-            if (autre.train.trackSystem == null ||
-                autre.train.trackSystem != train.trackSystem)
-                continue;
-
-            // Recouvrement mesuré sur la distance curviligne, et non en
-            // distance euclidienne : deux convois qui se croisent sur le
-            // même rail se heurtent, qu'ils aillent l'un vers l'autre ou
-            // qu'ils se rattrapent par l'arrière.
-            float ecart = Mathf.Abs(autre.train.distanceTrain - train.distanceTrain);
-
-            if (ecart <= distanceDetection)
+            // Le critère est le recouvrement RÉEL des caisses, sans
+            // considération de voie. Une simple distance entre pivots ne
+            // saurait pas trancher : 5,6 m séparent deux convois qui se
+            // croisent sur des voies parallèles — aucun contact — et
+            // séparent aussi deux caisses déjà imbriquées nez à nez sur le
+            // même rail. Des volumes le distinguent, un scalaire non.
+            if (ConvoisEnContact(train, autre.train, margeContact, out Vector3 point))
             {
-                CollisionTrain(autre);
+                CollisionTrain(autre, point);
                 return;
             }
         }
     }
 
 
-    private void CollisionTrain(TrainCollisionDetector autre)
+    /// <summary>
+    /// Vrai si une caisse de l'un recouvre une caisse de l'autre, marge
+    /// comprise. Le point de contact renvoyé est le milieu des deux caisses
+    /// fautives — l'endroit exact du choc, et non le milieu des deux convois.
+    /// </summary>
+    private static bool ConvoisEnContact(TrainController a, TrainController b,
+                                         float marge, out Vector3 point)
+    {
+        point = Vector3.zero;
+
+        if (a == null || b == null || a.wagons == null || b.wagons == null)
+            return false;
+
+        foreach (WagonController wa in a.wagons)
+        {
+            if (wa == null)
+                continue;
+
+            Bounds ba = wa.BornesMonde;
+            ba.Expand(marge);
+
+            foreach (WagonController wb in b.wagons)
+            {
+                if (wb == null)
+                    continue;
+
+                Bounds bb = wb.BornesMonde;
+
+                if (!ba.Intersects(bb))
+                    continue;
+
+                point = (ba.center + bb.center) * 0.5f;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+    private void CollisionTrain(TrainCollisionDetector autre, Vector3 pointContact)
     {
         collisionEffectuee = true;
         autre.collisionEffectuee = true;
 
-        Vector3 pointImpact =
-            (transform.position + autre.transform.position) * 0.5f
-            + Vector3.up * 2f;
+        Vector3 pointImpact = pointContact + Vector3.up * 2f;
 
         Debug.Log($"[Choc] {train.name} et {autre.train.name} au point {pointImpact}", this);
 

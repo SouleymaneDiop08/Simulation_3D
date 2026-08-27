@@ -64,8 +64,14 @@ public class TrainController : MonoBehaviour
 
 
     [Header("Impact")]
-    [Tooltip("Multiplicateur appliqué à la force de recul reçue lors d'un choc.")]
-    public float coefficientRecul = 2f;
+    [Tooltip("Multiplicateur appliqué à la force de recul reçue lors d'un choc. " +
+             "Volontairement modeste : un choc doit se lire comme un arrêt " +
+             "brutal, pas comme un rebond.")]
+    public float coefficientRecul = 0.5f;
+
+    [Tooltip("Amortissement du recul après un choc, en m/s². Élevé pour que le " +
+             "convoi s'immobilise en une fraction de seconde.")]
+    public float amortissementRecul = 40f;
 
 
     // ==========================================================
@@ -318,7 +324,7 @@ public class TrainController : MonoBehaviour
             distanceTrain = Mathf.Clamp(distanceTrain, LimiteBasse, LimiteHaute);
 
         // Amortissement du recul
-        vitesseImpact = Mathf.MoveTowards(vitesseImpact, 0f, 20f * Time.deltaTime);
+        vitesseImpact = Mathf.MoveTowards(vitesseImpact, 0f, amortissementRecul * Time.deltaTime);
 
         bool recultermine = Mathf.Abs(vitesseImpact) < 0.1f;
         bool dureeEcoulee = dureeImpact > 0f && tempsImpact >= dureeImpact;
@@ -337,9 +343,17 @@ public class TrainController : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// Réaction au choc : léger recul, puis immobilisation définitive.
+    ///
+    /// L'état Bloque n'est pas levé par la suite : un convoi accidenté reste
+    /// sur place, et cesse de suivre la position dictée par l'automate. C'est
+    /// voulu — sans cela les deux convois se traverseraient et repartiraient
+    /// comme si de rien n'était.
+    /// </summary>
     public void AppliquerImpact(float forceRecul, float duree)
     {
-        if (etat == EtatTrain.Bloque)
+        if (etat == EtatTrain.Bloque || etat == EtatTrain.Impact)
             return;
 
         etat = EtatTrain.Impact;
