@@ -42,6 +42,12 @@ public class TrainController : MonoBehaviour
     [Tooltip("Écart entre deux wagons consécutifs, en mètres.")]
     public float distanceEntreWagons = 15f;
 
+    [Header("Quais")]
+    [Tooltip("Distance de garde conservée entre le convoi et chaque extrémité " +
+             "de la voie, en mètres. Empêche le convoi d'entrer sous le " +
+             "bâtiment de la gare, quoi que commande l'automate.")]
+    public float margeQuai = 25f;
+
 
     [Header("Voie actuelle")]
     public TrackSystem trackSystem;
@@ -80,6 +86,19 @@ public class TrainController : MonoBehaviour
     /// <summary>Vitesse en km/h, pour l'affichage et l'échange automate.</summary>
     public float VitesseKmh => vitesse * MS_VERS_KMH;
 
+    /// <summary>Longueur du convoi, du premier au dernier wagon, en mètres.</summary>
+    public float LongueurConvoi =>
+        wagons == null || wagons.Length < 2 ? 0f : (wagons.Length - 1) * distanceEntreWagons;
+
+    /// <summary>Position la plus reculée admise pour la tête du convoi.</summary>
+    public float LimiteBasse => margeQuai + LongueurConvoi;
+
+    /// <summary>Position la plus avancée admise pour la tête du convoi.</summary>
+    public float LimiteHaute =>
+        trackSystem != null && trackSystem.Pret
+            ? Mathf.Max(trackSystem.Longueur - margeQuai, LimiteBasse)
+            : LimiteBasse;
+
 
     // ==========================================================
     // INTERNE
@@ -103,15 +122,14 @@ public class TrainController : MonoBehaviour
                 wagon.train = this;
         }
 
-        // Sans décalage initial, tous les wagons seraient ramenés à la
-        // distance 0 par le Clamp et se superposeraient au démarrage.
-        float minimum = Mathf.Max(0f, (wagons.Length - 1) * distanceEntreWagons);
-
-        if (distanceTrain < minimum)
-            distanceTrain = minimum;
-
         if (trackSystem != null)
             AppliquerVoie(trackSystem);
+
+        // Le convoi est posé au-delà du quai : sa queue se trouve à margeQuai
+        // de l'origine de la voie, et non à la distance 0 — qui tombe sous le
+        // bâtiment de la gare.
+        if (distanceTrain < LimiteBasse)
+            distanceTrain = LimiteBasse;
     }
 
 
@@ -132,10 +150,15 @@ public class TrainController : MonoBehaviour
                 break;
 
             case EtatTrain.Normal:
+            case EtatTrain.FinDeVoie:
+                // FinDeVoie doit continuer d'être évalué : c'est dans
+                // MettreAJourDeplacement que la butée se lève, dès que le sens
+                // commandé éloigne le convoi. L'exclure ici l'immobiliserait
+                // définitivement.
                 MettreAJourDeplacement();
                 break;
 
-            // Bloque et FinDeVoie : le convoi ne se déplace plus.
+            // Bloque : le convoi ne se déplace plus.
         }
 
         PositionnerWagons();
@@ -170,34 +193,45 @@ public class TrainController : MonoBehaviour
         if (trackSystem == null || !trackSystem.Pret)
             return;
 
-        // En bout de voie, on change d'état au lieu de figer silencieusement
-        // la distance : sinon le train reste immobile alors que la physique
-        // continue d'annoncer une vitesse.
-        if (distanceTrain >= trackSystem.Longueur)
+        // Butées de quai. Volontairement NON verrouillantes : sur une navette,
+        // l'automate commandera le sens inverse quelques secondes plus tard.
+        // Un état terminal immobiliserait le convoi pour de bon dès le moindre
+        // écart de calibrage.
+        if (distanceTrain >= LimiteHaute && vitesseReelle > 0f)
         {
-            distanceTrain = trackSystem.Longueur;
-            ArriverEnBoutDeVoie();
+            distanceTrain = LimiteHaute;
+            Buter();
         }
-        else if (distanceTrain <= 0f)
+        else if (distanceTrain <= LimiteBasse && vitesseReelle < 0f)
         {
-            distanceTrain = 0f;
-            ArriverEnBoutDeVoie();
+            distanceTrain = LimiteBasse;
+            Buter();
+        }
+        else if (etat == EtatTrain.FinDeVoie)
+        {
+            // Le convoi repart dans l'autre sens : la butée est levée
+            etat = EtatTrain.Normal;
         }
     }
 
 
-    private void ArriverEnBoutDeVoie()
+    /// <summary>
+    /// Arrêt en butée de quai. La vitesse est annulée mais aucun état bloquant
+    /// n'est posé : le convoi repartira dès que le sens commandé l'éloignera
+    /// de la butée.
+    /// </summary>
+    private void Buter()
     {
+        vitesse = 0f;
+
+        if (physics != null)
+            physics.ArreterNet();
+
         if (etat == EtatTrain.FinDeVoie)
             return;
 
         etat = EtatTrain.FinDeVoie;
-        vitesse = 0f;
-
-        if (physics != null)
-            physics.FreinUrgence();
-
-        Debug.Log($"[Train] {name} : bout de voie atteint.", this);
+        Debug.Log($"[Train] {name} : butée de quai atteinte.", this);
     }
 
 
@@ -225,7 +259,7 @@ public class TrainController : MonoBehaviour
         distanceTrain += vitesseImpact * Time.deltaTime;
 
         if (trackSystem != null && trackSystem.Pret)
-            distanceTrain = Mathf.Clamp(distanceTrain, 0f, trackSystem.Longueur);
+            distanceTrain = Mathf.Clamp(distanceTrain, LimiteBasse, LimiteHaute);
 
         // Amortissement du recul
         vitesseImpact = Mathf.MoveTowards(vitesseImpact, 0f, 20f * Time.deltaTime);
@@ -302,7 +336,7 @@ public class TrainController : MonoBehaviour
         distanceTrain -= distance;
 
         if (trackSystem != null && trackSystem.Pret)
-            distanceTrain = Mathf.Clamp(distanceTrain, 0f, trackSystem.Longueur);
+            distanceTrain = Mathf.Clamp(distanceTrain, LimiteBasse, LimiteHaute);
     }
 
 

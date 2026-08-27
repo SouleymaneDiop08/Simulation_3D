@@ -318,7 +318,11 @@ VAR CONSTANT
 
          longueur de voie          1860 m   (gare A z=616 -> gare B z=2476)
          longueur d'un convoi        63 m   (4 intervalles de 15,7 m)
-         course utile              1797 m
+         marge de quai               25 m   a chaque extremite
+
+         butee basse   25 + 63  =    88 m
+         butee haute   1860 - 25 =  1835 m
+         course utile              1747 m
 
        Cinematique cote simulation :
 
@@ -329,25 +333,27 @@ VAR CONSTANT
 
        Distance parcourue sur une etape de marche de 95 s :
 
-         17,5 x (95 - 3,5)  =  1601 m      (montee en vitesse comprise)
+         17,5 x (100 - 3,5) =  1689 m      (montee en vitesse comprise)
          approche 12 s a 5 m/s ............   70 m
          freinage d'arret .................    2 m
                                           --------
-                                            1673 m   sur 1797 utiles
+                                            1761 m   pour 1747 utiles
 
-       Il reste donc environ 120 m de marge avant le heurtoir.
+       Le calcul vise volontairement 14 m AU-DELA de la butee : le convoi
+       atteint ainsi la gare a coup sur, et la butee de quai absorbe le
+       reliquat. Cote simulation, cette butee n'est pas verrouillante — le
+       convoi repart des que l'automate commande le sens oppose.
 
-       L'automate n'a AUCUN retour de position : ces durees sont la seule
-       chose qui empeche les convois de buter en bout de voie. Augmenter
-       DUREE_MARCHE sans refaire ce calcul les y enverrait, et l'etat
-       FinDeVoie est sans retour cote simulation.
+       C'est la simulation qui garantit la distance de garde, pas ces
+       durees : l'automate est aveugle, il ne saurait pas s'arreter au bon
+       endroit. Les durees servent seulement a ce que le convoi arrive.
        ================================================================ *)
     LONGUEUR_VOIE    : UINT  := 1860;  (* m, pour memoire *)
 
     TRACTION_MARCHE  : UINT  := 700;
     VITESSE_LIGNE    : UINT  := 90;    (* km/h affiches en cabine *)
     VITESSE_APPROCHE : UINT  := 30;
-    DUREE_MARCHE     : UDINT := 95000; (* ms *)
+    DUREE_MARCHE     : UDINT := 100000; (* ms *)
 
     (* Decalage entre les deux navettes, pour qu'elles ne soient jamais
        en phase et que la ligne paraisse vivante. *)

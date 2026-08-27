@@ -123,6 +123,20 @@ public class TrainPhysicsController : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// Annule la vitesse sur-le-champ, sans changer l'état de frein.
+    /// Utilisé par la butée de quai : le convoi doit pouvoir repartir dès que
+    /// l'automate commande le sens opposé.
+    /// </summary>
+    public void ArreterNet()
+    {
+        vitesseActuelle = 0f;
+
+        if (train != null)
+            train.vitesse = 0f;
+    }
+
+
     public void Reinitialiser()
     {
         etatFrein = EtatFrein.Relache;
