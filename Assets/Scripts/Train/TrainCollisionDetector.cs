@@ -22,10 +22,13 @@ public class TrainCollisionDetector : MonoBehaviour
     [Header("Détection")]
     [Tooltip("Marge ajoutée au volume de chaque caisse, en mètres. Le choc se " +
              "déclenche quand les volumes ainsi élargis se recouvrent, donc " +
-             "juste avant que les modèles ne s'interpénètrent visuellement. " +
-             "À ne pas monter au-delà de 1,7 m : c'est le jeu qui sépare deux " +
-             "caisses se croisant sur les voies parallèles de la scène.")]
-    public float margeContact = 1f;
+             "juste avant que les modèles ne s'interpénètrent visuellement.\n\n" +
+             "PLAFOND : les deux voies ne sont écartées que de 5,6 m. Marge + " +
+             "largeur d'une caisse doit rester sous cette valeur, sinon deux " +
+             "convois se croisant sur des voies parallèles déclencheraient un " +
+             "faux choc. Les caisses ayant été mises à l'échelle 2, la marge a " +
+             "été abaissée en conséquence.")]
+    public float margeContact = 0.5f;
 
     [Tooltip("Secondes ignorées après le démarrage. Le temps que chaque convoi " +
              "soit posé sur sa voie, les wagons occupent encore leur position " +
