@@ -10,6 +10,15 @@
 #  produit les ordres, la simulation les applique. La passerelle est donc
 #  cliente Modbus du runtime OpenPLC, et non un équipement d'E/S déporté.
 #
+#  Chaîne :
+#      navigateur → webgl (nginx :80) → bridge → plc (Modbus :502)
+#
+#  Une seule origine est exposée au navigateur : nginx sert le build ET
+#  relaie /ws et /data vers la passerelle, qui reste interne au réseau ICS.
+#
+#  Prérequis : le build Unity doit exister dans Build/WebGL avant de
+#  construire l'image webgl.
+#
 #  Lancement :   docker compose up --build
 #  Interfaces :  OpenPLC     http://localhost:8080   (openplc / openplc)
 #                Vue 3D      http://localhost:8081
@@ -20,7 +29,9 @@ services:
 
   plc:
     build:
-      context: ./openplc
+      # Contexte au dossier PLC/ pour embarquer simulation_ferroviaire.st
+      context: .
+      dockerfile: openplc/Dockerfile
       # Certains hôtes ne fournissent pas de DNS au conteneur de build.
       # Retirer cette ligne si votre Docker refuse le réseau hôte au build.
       network: host
@@ -30,10 +41,10 @@ services:
       - "8080:8080"     # interface web OpenPLC
       - "502:502"       # serveur Modbus TCP
     volumes:
-      # Le programme ST est monté en lecture seule : il suffit de l'uploader
-      # une fois depuis l'interface web (Programs → Upload).
-      - ./simulation_ferroviaire.st:/programs/simulation_ferroviaire.st:ro
-      - plc_data:/opt/OpenPLC_v3/webserver/scripts
+      # Seule la base est persistée : elle porte les réglages et les
+      # utilisateurs. Le programme, lui, est compilé dans l'image — le monter
+      # depuis l'hôte ne suffisait pas, il était perdu à chaque recréation.
+      - plc_db:/opt/OpenPLC_v3/webserver/instance
     networks:
       ics:
         ipv4_address: 172.28.0.2
@@ -59,16 +70,32 @@ services:
       PLC_HOST: 172.28.0.2
       PLC_PORT: "502"
       PORT: "8081"
-      WEBGL_DIR: /webgl
-    ports:
-      - "8081:8081"     # vue 3D + WebSocket + GET /data
-    volumes:
-      # Build WebGL servi en lecture seule. Rebuild depuis Unity = simple
-      # rafraîchissement du navigateur, pas besoin de relancer le conteneur.
-      - ../Build/WebGL:/webgl:ro
+    # Aucun port publié : la passerelle n'est jointe que par nginx, à
+    # l'intérieur du réseau ICS. Elle ne sert plus de fichiers non plus.
+    expose:
+      - "8081"
     networks:
       ics:
         ipv4_address: 172.28.0.3
+    restart: unless-stopped
+
+
+  webgl:
+    build:
+      # Contexte à la racine du projet pour atteindre Build/WebGL.
+      # Le .dockerignore de la racine limite ce qui est envoyé au démon.
+      context: ..
+      dockerfile: PLC/webgl/Dockerfile
+      network: host
+    container_name: sf-webgl
+    hostname: webgl
+    depends_on:
+      - bridge
+    ports:
+      - "8081:80"       # seule porte d'entrée du navigateur
+    networks:
+      ics:
+        ipv4_address: 172.28.0.4
     restart: unless-stopped
 
 
@@ -80,4 +107,4 @@ networks:
         - subnet: 172.28.0.0/24
 
 volumes:
-  plc_data:
+  plc_db:

@@ -1,0 +1,16 @@
+# Contexte de build reduit a l'essentiel : sans ce filtre, Docker enverrait
+# les 2,7 Go de Library/ au demon a chaque construction.
+.git/
+Library/
+Temp/
+Logs/
+obj/
+Assets/
+ProjectSettings/
+UserSettings/
+Packages/
+Documentation/
+PLC/bridge/node_modules/
+*.zip
+*.csproj
+*.sln

@@ -2559,7 +2559,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TrainPhysicsController
   train: {fileID: 1535455435}
-  vitesseMax: 100
+  vitesseMax: 25
   vitesseDemandee: 70
   vitesseActuelle: 0
   acceleration: 5
@@ -4402,6 +4402,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1311061966}
   - component: {fileID: 1311061965}
+  - component: {fileID: 963194301}
+  - component: {fileID: 963194302}
   m_Layer: 0
   m_Name: SimulationManager
   m_TagString: Untagged
@@ -10533,7 +10535,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TrainPhysicsController
   train: {fileID: 1049974604}
-  vitesseMax: 100
+  vitesseMax: 25
   vitesseDemandee: 70
   vitesseActuelle: 0
   acceleration: 5
@@ -15906,3 +15908,47 @@ MonoBehaviour:
   toucheBascule: 3
   vueActuelle: 0
   nomVueActuelle: 
+--- !u!114 &963194301
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1311061964}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d48873f29e814204af46095faa6a4c75, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  trains:
+  - {fileID: 1049974604}
+  - {fileID: 1535455435}
+  aiguillages:
+  - {fileID: 977162723}
+  - {fileID: 1305464763}
+  signaux: []
+  delaiSansOrdre: 2
+  liaisonActive: 0
+  sourceCommande: 
+  secondesDepuisDernierOrdre: 0
+  dernierMotifSecurite: 
+--- !u!114 &963194302
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1311061964}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cbc2ca1aa3d64bc4920d60d8be733c08, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  urlPasserelle: 
+  delaiChienDeGarde: 2
+  delaiReconnexion: 3
+  cheminWebSocket: /ws
+  poste: {fileID: 963194301}
+  connecte: 0
+  etapeCourante: 0
+  derniereErreur: 

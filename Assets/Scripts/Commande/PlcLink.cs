@@ -79,6 +79,11 @@ public class PlcLink : MonoBehaviour
 
     public float delaiReconnexion = 3f;
 
+    [Tooltip("Chemin du WebSocket. nginx relaie /ws vers la passerelle ; en " +
+             "direct, la passerelle accepte la montée sur n'importe quel chemin, " +
+             "donc la même valeur convient dans les deux cas.")]
+    public string cheminWebSocket = "/ws";
+
 
     [Header("Poste de commande")]
     [Tooltip("Laisser vide pour utiliser PosteDeCommande.Instance.")]
@@ -203,7 +208,7 @@ public class PlcLink : MonoBehaviour
                 // 3. Même origine que la page. Une page en HTTPS impose wss://,
                 //    sinon le navigateur bloque la connexion.
                 string schema = uri.Scheme == "https" ? "wss" : "ws";
-                return $"{schema}://{uri.Host}:{uri.Port}";
+                return $"{schema}://{uri.Host}:{uri.Port}{cheminWebSocket}";
             }
             catch (Exception e)
             {
@@ -215,7 +220,7 @@ public class PlcLink : MonoBehaviour
         if (!string.IsNullOrEmpty(urlPasserelle))
             return urlPasserelle;
 
-        return "ws://localhost:8081";
+        return "ws://localhost:8081" + cheminWebSocket;
     }
 
 

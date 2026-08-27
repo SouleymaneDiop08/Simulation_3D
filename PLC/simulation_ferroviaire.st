@@ -8,11 +8,19 @@
 
     Role : l'automate est la SOURCE. Il produit les ordres de conduite,
     la position des aiguilles et l'aspect des signaux. Unity se contente
-    de lire ces valeurs en Modbus TCP et de les appliquer.
+    de lire ces valeurs et de les appliquer.
 
-    Toutes les sorties sont mappees sur des adresses %QX / %QW, donc
-    exposees en Coils et Holding Registers : lisibles par un client
-    Modbus sans aucun contournement.
+    EXPLOITATION SIMULEE
+    Deux navettes font l'aller-retour entre deux gares, sur leurs voies
+    respectives. Chaque convoi enchaine : depart, marche en ligne,
+    approche ralentie, arret en gare, stationnement, puis repart en sens
+    inverse. Les deux navettes sont decalees dans le temps pour qu'elles
+    ne soient jamais en phase.
+
+    Le mouvement est commande EN AVEUGLE : l'automate ne recoit aucun
+    retour de la simulation. Les durees de marche sont donc calibrees
+    pour rester en deca de la longueur de voie (~1860 m). Allonger
+    DUREE_MARCHE ferait buter les convois en bout de voie.
 
     Voir PLC/README-modbus.md pour la table d'adresses cote Unity.
     ==================================================================
@@ -58,6 +66,238 @@ END_FUNCTION_BLOCK
 
 
 
+(*
+    ------------------------------------------------------------------
+    BLOC FONCTIONNEL : navette entre deux gares
+    ------------------------------------------------------------------
+    Un cycle complet : gare A -> gare B -> gare A, indefiniment.
+
+    Le meme bloc pilote les deux convois : modifier le cycle ici le
+    modifie pour les deux. Le parametre Retard suffit a les desynchroniser.
+
+    Le sequenceur ne produit que des CONSIGNES. Les rampes et les
+    securites finales sont appliquees par le programme appelant, apres
+    coup, et aucune etape ne peut les contourner.
+*)
+FUNCTION_BLOCK NAVETTE
+VAR_INPUT
+    (* Autorisation de circuler. A FALSE, la navette retombe au repos. *)
+    Autorisee       : BOOL;
+
+    (* Periode de scan, en ms : sert de base de temps au sequenceur. *)
+    PeriodeMs       : UDINT;
+
+    (* Decalage avant le tout premier depart, en ms. *)
+    Retard          : UDINT;
+
+    (* Consigne de traction en ligne, en pour mille. *)
+    TractionMarche  : UINT;
+
+    (* Vitesses affichees en cabine, en km/h. *)
+    VitesseLigne    : UINT;
+    VitesseApproche : UINT;
+
+    (* Duree de la marche entre les deux gares, en ms. *)
+    DureeMarche     : UDINT;
+END_VAR
+
+VAR_OUTPUT
+    Traction        : UINT;
+    FreinService    : BOOL;
+    FreinUrgence    : BOOL;
+    SensAvant       : BOOL;
+    SensArriere     : BOOL;
+    VitesseLimite   : UINT;
+
+    Etape           : UINT;   (* etape courante, pour la supervision *)
+    EnGare          : BOOL;   (* convoi a quai, signal ferme *)
+    EnApproche      : BOOL;   (* convoi ralenti, signal a l'avertissement *)
+    VersGareB       : BOOL;   (* sens courant du trajet *)
+END_VAR
+
+VAR
+    Temps     : UDINT;
+    EtapePrec : UINT;
+END_VAR
+
+
+(* Le poste peut retirer l'autorisation a tout moment *)
+IF NOT Autorisee THEN
+    Etape := 0;
+END_IF;
+
+
+(* Base de temps : remise a zero a chaque changement d'etape *)
+IF Etape <> EtapePrec THEN
+    Temps := 0;
+    EtapePrec := Etape;
+ELSE
+    Temps := Temps + PeriodeMs;
+END_IF;
+
+
+CASE Etape OF
+
+    (* ---------- 0 : REPOS ---------- *)
+    0:
+        Traction      := 0;
+        FreinService  := FALSE;
+        FreinUrgence  := TRUE;
+        SensAvant     := FALSE;
+        SensArriere   := FALSE;
+        VitesseLimite := 0;
+        EnGare        := TRUE;
+        EnApproche    := FALSE;
+        VersGareB     := TRUE;
+
+        IF Autorisee AND Temps >= Retard THEN
+            Etape := 10;
+        END_IF;
+
+
+    (* ---------- 10 : GARE A, preparation du depart ---------- *)
+    10:
+        Traction      := 0;
+        FreinUrgence  := TRUE;
+        FreinService  := FALSE;
+        VitesseLimite := 0;
+        EnGare        := TRUE;
+        EnApproche    := FALSE;
+        VersGareB     := TRUE;
+
+        IF Temps >= 4000 THEN
+            Etape := 20;
+        END_IF;
+
+
+    (* ---------- 20 : DEPART VERS B ---------- *)
+    (* Desserrage et engagement du sens avant le premier effort *)
+    20:
+        FreinUrgence  := FALSE;
+        FreinService  := FALSE;
+        SensAvant     := TRUE;
+        SensArriere   := FALSE;
+        VitesseLimite := VitesseLigne;
+        EnGare        := FALSE;
+
+        IF Temps >= 1500 THEN
+            Etape := 30;
+        END_IF;
+
+
+    (* ---------- 30 : MARCHE EN LIGNE VERS B ---------- *)
+    30:
+        Traction := TractionMarche;
+
+        IF Temps >= DureeMarche THEN
+            Etape := 40;
+        END_IF;
+
+
+    (* ---------- 40 : APPROCHE DE B ---------- *)
+    40:
+        Traction      := TractionMarche / 3;
+        VitesseLimite := VitesseApproche;
+        EnApproche    := TRUE;
+
+        IF Temps >= 12000 THEN
+            Etape := 50;
+        END_IF;
+
+
+    (* ---------- 50 : FREINAGE D'ARRET EN B ---------- *)
+    50:
+        Traction      := 0;
+        FreinService  := TRUE;
+        VitesseLimite := 0;
+
+        IF Temps >= 12000 THEN
+            Etape := 60;
+        END_IF;
+
+
+    (* ---------- 60 : STATIONNEMENT EN B ---------- *)
+    60:
+        FreinUrgence  := TRUE;
+        FreinService  := FALSE;
+        SensAvant     := FALSE;
+        SensArriere   := FALSE;
+        EnGare        := TRUE;
+        EnApproche    := FALSE;
+
+        IF Temps >= 15000 THEN
+            Etape := 70;
+        END_IF;
+
+
+    (* ---------- 70 : DEPART VERS A, sens inverse ---------- *)
+    70:
+        VersGareB     := FALSE;
+        FreinUrgence  := FALSE;
+        SensAvant     := FALSE;
+        SensArriere   := TRUE;
+        VitesseLimite := VitesseLigne;
+        EnGare        := FALSE;
+
+        IF Temps >= 1500 THEN
+            Etape := 80;
+        END_IF;
+
+
+    (* ---------- 80 : MARCHE EN LIGNE VERS A ---------- *)
+    80:
+        Traction := TractionMarche;
+
+        IF Temps >= DureeMarche THEN
+            Etape := 90;
+        END_IF;
+
+
+    (* ---------- 90 : APPROCHE DE A ---------- *)
+    90:
+        Traction      := TractionMarche / 3;
+        VitesseLimite := VitesseApproche;
+        EnApproche    := TRUE;
+
+        IF Temps >= 12000 THEN
+            Etape := 100;
+        END_IF;
+
+
+    (* ---------- 100 : FREINAGE D'ARRET EN A ---------- *)
+    100:
+        Traction      := 0;
+        FreinService  := TRUE;
+        VitesseLimite := 0;
+
+        IF Temps >= 12000 THEN
+            Etape := 110;
+        END_IF;
+
+
+    (* ---------- 110 : STATIONNEMENT EN A ---------- *)
+    110:
+        FreinUrgence  := TRUE;
+        FreinService  := FALSE;
+        SensAvant     := FALSE;
+        SensArriere   := FALSE;
+        EnGare        := TRUE;
+        EnApproche    := FALSE;
+
+        IF Temps >= 15000 THEN
+            Etape := 10;
+        END_IF;
+
+ELSE
+    (* Etape inconnue : repli au repos *)
+    Etape := 0;
+
+END_CASE;
+
+END_FUNCTION_BLOCK
+
+
+
 PROGRAM main
 VAR CONSTANT
     (* Doit correspondre a l'INTERVAL de la TASK declaree plus bas *)
@@ -70,6 +310,21 @@ VAR CONSTANT
     CARRE        : UINT  := 0;   (* arret absolu *)
     AVERTISSEMENT: UINT  := 1;   (* prochain signal ferme *)
     VOIE_LIBRE   : UINT  := 2;
+
+    (* ---- Calibrage de l'exploitation ----
+       A 600 pour mille et vitesseMax = 25 m/s cote simulation, la marche
+       se fait a 15 m/s : 90 s donnent environ 1350 m, largement en deca
+       des 1860 m de voie. Augmenter DUREE_MARCHE ferait buter les convois
+       en bout de voie, l'automate n'ayant aucun retour de position. *)
+    TRACTION_MARCHE  : UINT  := 600;
+    VITESSE_LIGNE    : UINT  := 90;    (* km/h affiches en cabine *)
+    VITESSE_APPROCHE : UINT  := 30;
+    DUREE_MARCHE     : UDINT := 90000; (* ms *)
+
+    (* Decalage entre les deux navettes, pour qu'elles ne soient jamais
+       en phase et que la ligne paraisse vivante. *)
+    RETARD_T1        : UDINT := 2000;
+    RETARD_T2        : UDINT := 60000;
 END_VAR
 
 VAR
@@ -120,7 +375,7 @@ VAR
     (* ==============================================================
        SUPERVISION
        ============================================================== *)
-    Etape             AT %QW10 : UINT;   (* etape courante du scenario *)
+    Etape             AT %QW10 : UINT;   (* etape de la navette 1 *)
     Heartbeat         AT %QX2.0 : BOOL;  (* bascule a 1 Hz *)
     ScenarioActif     AT %QX2.1 : BOOL;
 END_VAR
@@ -135,15 +390,15 @@ END_VAR
    d'erreurs « invalid located variable declaration ».
    ================================================================== *)
 VAR
-    ConsigneT1   : UINT;      (* cible de la rampe train 1 *)
-    ConsigneT2   : UINT;
-    RampeT1      : RAMPE_UINT;
-    RampeT2      : RAMPE_UINT;
+    NavetteT1 : NAVETTE;
+    NavetteT2 : NAVETTE;
 
-    EtapePrec    : UINT;
-    TempsEtape   : UDINT;     (* temps passe dans l'etape, en ms *)
+    RampeT1   : RAMPE_UINT;
+    RampeT2   : RAMPE_UINT;
 
-    TmrCoeur     : TON;       (* oscillateur du chien de garde *)
+    Circulation : BOOL;       (* autorisation generale de circuler *)
+
+    TmrCoeur  : TON;          (* oscillateur du chien de garde *)
 END_VAR
 
 
@@ -151,11 +406,11 @@ END_VAR
     ------------------------------------------------------------------
     1. CHIEN DE GARDE
     ------------------------------------------------------------------
-    Heartbeat bascule toutes les 500 ms. Cote Unity, surveillez ce bit :
-    s'il cesse de changer d'etat pendant plus de 2 s, la liaison est
-    perdue et il faut appliquer le frein d'urgence de vous-meme.
-    Sans ce mecanisme, une coupure reseau laisse le train lance a la
-    derniere consigne recue.
+    Heartbeat bascule toutes les 500 ms. Cote Unity, PlcLink surveille ce
+    bit : s'il cesse de changer d'etat pendant plus de 2 s, la liaison est
+    consideree perdue et le frein d'urgence est applique.
+    Sans ce mecanisme, une coupure laisse le train lance a la derniere
+    consigne recue.
 *)
 TmrCoeur(IN := NOT TmrCoeur.Q, PT := T#500ms);
 
@@ -166,237 +421,138 @@ END_IF;
 
 (*
     ------------------------------------------------------------------
-    2. BASE DE TEMPS DU SEQUENCEUR
+    2. AUTORISATION GENERALE
     ------------------------------------------------------------------
-    TempsEtape est remis a zero a chaque changement d'etape, puis
-    incremente d'une periode de scan. Plus lisible et plus deterministe
-    qu'un TON par etape.
+    L'arret d'urgence est traite en amont de tout : il coupe la
+    circulation des deux navettes en meme temps.
 *)
-IF Etape <> EtapePrec THEN
-    TempsEtape := 0;
-    EtapePrec  := Etape;
+Circulation   := NOT AU_Externe;
+ScenarioActif := Circulation;
+
+
+(*
+    ------------------------------------------------------------------
+    3. SEQUENCEURS
+    ------------------------------------------------------------------
+    Le meme bloc fonctionnel pilote les deux convois. Seul le retard au
+    premier depart les distingue, ce qui suffit a les desynchroniser
+    definitivement.
+*)
+NavetteT1(
+    Autorisee       := Circulation,
+    PeriodeMs       := PERIODE_MS,
+    Retard          := RETARD_T1,
+    TractionMarche  := TRACTION_MARCHE,
+    VitesseLigne    := VITESSE_LIGNE,
+    VitesseApproche := VITESSE_APPROCHE,
+    DureeMarche     := DUREE_MARCHE
+);
+
+NavetteT2(
+    Autorisee       := Circulation,
+    PeriodeMs       := PERIODE_MS,
+    Retard          := RETARD_T2,
+    TractionMarche  := TRACTION_MARCHE,
+    VitesseLigne    := VITESSE_LIGNE,
+    VitesseApproche := VITESSE_APPROCHE,
+    DureeMarche     := DUREE_MARCHE
+);
+
+
+(*
+    ------------------------------------------------------------------
+    4. REPORT DES SORTIES
+    ------------------------------------------------------------------
+*)
+T1_FreinService  := NavetteT1.FreinService;
+T1_FreinUrgence  := NavetteT1.FreinUrgence;
+T1_SensAvant     := NavetteT1.SensAvant;
+T1_SensArriere   := NavetteT1.SensArriere;
+T1_VitesseLimite := NavetteT1.VitesseLimite;
+
+T2_FreinService  := NavetteT2.FreinService;
+T2_FreinUrgence  := NavetteT2.FreinUrgence;
+T2_SensAvant     := NavetteT2.SensAvant;
+T2_SensArriere   := NavetteT2.SensArriere;
+T2_VitesseLimite := NavetteT2.VitesseLimite;
+
+Etape := NavetteT1.Etape;
+
+
+(*
+    ------------------------------------------------------------------
+    5. SIGNALISATION
+    ------------------------------------------------------------------
+    Un signal par convoi. Il presente le carre tant que le convoi est a
+    quai, l'avertissement pendant l'approche, la voie libre en ligne.
+*)
+IF NavetteT1.EnGare THEN
+    SIG1_Aspect := CARRE;
+ELSIF NavetteT1.EnApproche THEN
+    SIG1_Aspect := AVERTISSEMENT;
 ELSE
-    TempsEtape := TempsEtape + PERIODE_MS;
+    SIG1_Aspect := VOIE_LIBRE;
+END_IF;
+
+IF NavetteT2.EnGare THEN
+    SIG2_Aspect := CARRE;
+ELSIF NavetteT2.EnApproche THEN
+    SIG2_Aspect := AVERTISSEMENT;
+ELSE
+    SIG2_Aspect := VOIE_LIBRE;
 END_IF;
 
 
 (*
     ------------------------------------------------------------------
-    3. ARRET D'URGENCE PRIORITAIRE
+    6. AIGUILLAGES
     ------------------------------------------------------------------
-    Traite avant le sequenceur : il doit gagner sur toute autre logique.
+    Les aiguilles suivent le sens de marche : voie deviee au retour.
+    Elles ne bougent que convoi a quai — un enclenchement reel refuse de
+    manoeuvrer sous circulation, et l'imiter ici evite de faire sauter un
+    train d'une voie a l'autre en pleine marche.
 *)
-IF AU_Externe THEN
-    Etape := 999;
+IF NavetteT1.EnGare THEN
+    AIG1_Deviation := NOT NavetteT1.VersGareB;
+END_IF;
+
+IF NavetteT2.EnGare THEN
+    AIG2_Deviation := NOT NavetteT2.VersGareB;
 END_IF;
 
 
 (*
     ------------------------------------------------------------------
-    4. SEQUENCEUR DE CONDUITE
+    7. RAMPES DE TRACTION
     ------------------------------------------------------------------
+    Les sequenceurs ne manipulent que des consignes. La sortie envoyee a
+    la simulation passe toujours par une rampe : pas de saut d'effort.
 *)
-CASE Etape OF
-
-    (* ---------- 0 : INITIALISATION ---------- *)
-    0:
-        ScenarioActif   := FALSE;
-
-        ConsigneT1      := 0;
-        ConsigneT2      := 0;
-
-        T1_FreinUrgence := TRUE;
-        T1_FreinService := FALSE;
-        T1_SensAvant    := FALSE;
-        T1_SensArriere  := FALSE;
-
-        T2_FreinUrgence := TRUE;
-        T2_FreinService := FALSE;
-        T2_SensAvant    := FALSE;
-        T2_SensArriere  := FALSE;
-
-        AIG1_Deviation  := FALSE;
-        AIG2_Deviation  := FALSE;
-
-        SIG1_Aspect     := CARRE;
-        SIG2_Aspect     := CARRE;
-
-        T1_VitesseLimite := 0;
-        T2_VitesseLimite := 0;
-
-        IF TempsEtape >= 1000 THEN
-            Etape := 10;
-        END_IF;
-
-
-    (* ---------- 10 : ETABLISSEMENT DE L'ITINERAIRE ---------- *)
-    (* Les aiguilles sont commandees en position principale. On laisse
-       un temps de manoeuvre avant d'ouvrir le signal : c'est ce delai
-       qui rend le comportement credible. *)
-    10:
-        ScenarioActif   := TRUE;
-
-        AIG1_Deviation  := FALSE;
-        AIG2_Deviation  := FALSE;
-
-        SIG1_Aspect     := CARRE;
-
-        IF TempsEtape >= 4000 THEN
-            Etape := 20;
-        END_IF;
-
-
-    (* ---------- 20 : OUVERTURE DU SIGNAL ET DESSERRAGE ---------- *)
-    20:
-        SIG1_Aspect      := VOIE_LIBRE;
-        T1_VitesseLimite := 70;
-
-        T1_FreinUrgence  := FALSE;
-        T1_FreinService  := FALSE;
-        T1_SensAvant     := TRUE;
-        T1_SensArriere   := FALSE;
-
-        IF TempsEtape >= 1500 THEN
-            Etape := 30;
-        END_IF;
-
-
-    (* ---------- 30 : MISE EN VITESSE ---------- *)
-    30:
-        ConsigneT1 := 600;              (* 60 % de traction *)
-
-        IF TempsEtape >= 15000 THEN
-            Etape := 40;
-        END_IF;
-
-
-    (* ---------- 40 : APPROCHE DE LA ZONE LIMITEE ---------- *)
-    (* Le signal passe a l'avertissement et la consigne retombe : le
-       train doit etre ralenti AVANT d'aborder l'aiguille deviee. *)
-    40:
-        SIG2_Aspect      := AVERTISSEMENT;
-        T1_VitesseLimite := 40;
-
-        ConsigneT1       := 250;
-        T1_FreinService  := TRUE;
-
-        IF TempsEtape >= 8000 THEN
-            Etape := 50;
-        END_IF;
-
-
-    (* ---------- 50 : MANOEUVRE DE L'AIGUILLE ---------- *)
-    (* On ferme le signal avant de bouger l'aiguille, jamais l'inverse. *)
-    50:
-        SIG2_Aspect     := CARRE;
-        T1_FreinService := TRUE;
-        ConsigneT1      := 0;
-
-        IF TempsEtape >= 2000 THEN
-            AIG1_Deviation := TRUE;
-        END_IF;
-
-        IF TempsEtape >= 6000 THEN
-            Etape := 60;
-        END_IF;
-
-
-    (* ---------- 60 : FRANCHISSEMENT EN DEVIATION ---------- *)
-    60:
-        SIG2_Aspect      := VOIE_LIBRE;
-        T1_VitesseLimite := 40;
-
-        T1_FreinService  := FALSE;
-        ConsigneT1       := 300;
-
-        IF TempsEtape >= 12000 THEN
-            Etape := 70;
-        END_IF;
-
-
-    (* ---------- 70 : FREINAGE D'ARRIVEE ---------- *)
-    70:
-        SIG2_Aspect      := CARRE;
-        T1_VitesseLimite := 0;
-
-        ConsigneT1       := 0;
-        T1_FreinService  := TRUE;
-
-        IF TempsEtape >= 10000 THEN
-            Etape := 80;
-        END_IF;
-
-
-    (* ---------- 80 : STATIONNEMENT ---------- *)
-    80:
-        T1_FreinUrgence := TRUE;
-        T1_SensAvant    := FALSE;
-
-        IF TempsEtape >= 5000 THEN
-            Etape := 90;
-        END_IF;
-
-
-    (* ---------- 90 : REPRISE DU CYCLE ---------- *)
-    90:
-        AIG1_Deviation := FALSE;
-
-        IF TempsEtape >= 3000 THEN
-            Etape := 0;
-        END_IF;
-
-
-    (* ---------- 999 : ARRET D'URGENCE ---------- *)
-    999:
-        ScenarioActif   := FALSE;
-
-        ConsigneT1      := 0;
-        ConsigneT2      := 0;
-
-        T1_FreinUrgence := TRUE;
-        T2_FreinUrgence := TRUE;
-        T1_FreinService := FALSE;
-        T2_FreinService := FALSE;
-
-        SIG1_Aspect     := CARRE;
-        SIG2_Aspect     := CARRE;
-
-        T1_VitesseLimite := 0;
-        T2_VitesseLimite := 0;
-
-        (* Reprise seulement apres retombee de l'AU, et jamais
-           directement en marche : on repasse par l'initialisation. *)
-        IF NOT AU_Externe AND TempsEtape >= 2000 THEN
-            Etape := 0;
-        END_IF;
-
-ELSE
-    (* Etape inconnue : repli sur l'arret d'urgence *)
-    Etape := 999;
-
-END_CASE;
-
-
-(*
-    ------------------------------------------------------------------
-    5. APPLICATION DES RAMPES DE TRACTION
-    ------------------------------------------------------------------
-    Le sequenceur ne manipule que des consignes. La sortie envoyee a la
-    simulation passe toujours par une rampe : pas de saut de traction.
-*)
-RampeT1(Consigne := ConsigneT1, Pas := PAS_RAMPE);
+RampeT1(Consigne := NavetteT1.Traction, Pas := PAS_RAMPE);
 T1_Traction := RampeT1.Sortie;
 
-RampeT2(Consigne := ConsigneT2, Pas := PAS_RAMPE);
+RampeT2(Consigne := NavetteT2.Traction, Pas := PAS_RAMPE);
 T2_Traction := RampeT2.Sortie;
 
 
 (*
     ------------------------------------------------------------------
-    6. SECURITES FINALES
+    8. SECURITES FINALES
     ------------------------------------------------------------------
     Appliquees en dernier pour qu'aucune etape ne puisse les contredire.
 *)
+
+(* L'arret d'urgence prime sur tout *)
+IF AU_Externe THEN
+    T1_FreinUrgence := TRUE;
+    T2_FreinUrgence := TRUE;
+    T1_FreinService := FALSE;
+    T2_FreinService := FALSE;
+    SIG1_Aspect     := CARRE;
+    SIG2_Aspect     := CARRE;
+    T1_VitesseLimite := 0;
+    T2_VitesseLimite := 0;
+END_IF;
 
 (* Un frein serre annule toute traction *)
 IF T1_FreinUrgence OR T1_FreinService THEN
