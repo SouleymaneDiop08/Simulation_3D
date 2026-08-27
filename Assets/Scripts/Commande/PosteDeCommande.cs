@@ -178,6 +178,12 @@ public class PosteDeCommande : MonoBehaviour
         // ---- Vitesse autorisée : km/h reçus → m/s internes ----
         train.vitesseAutorisee = commande.vitesseLimiteKmh / TrainController.MS_VERS_KMH;
 
+        // ---- Position imposée par l'automate ----
+        // Fournie, elle prime sur l'intégration locale de la vitesse : c'est
+        // l'automate qui détient la position, la simulation ne fait que suivre.
+        if (commande.positionDecimetres >= 0)
+            train.DefinirPositionCommandee(commande.PositionMetres);
+
         // ---- Freins et traction, sur changement uniquement ----
         CommandeTrain precedente = _precedentes[index];
 

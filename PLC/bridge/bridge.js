@@ -82,6 +82,8 @@ const R = {
     SIG2_Aspect: 3,         // %QW3
     T1_VitesseLimite: 4,    // %QW4
     T2_VitesseLimite: 5,    // %QW5
+    T1_Position: 6,         // %QW6, en decimetres
+    T2_Position: 7,         // %QW7, en decimetres
     Etape: 10,              // %QW10
 };
 
@@ -110,9 +112,9 @@ function trameDegradee() {
         etape: 0,
         scenario: false,
         t1_traction: 0, t1_fs: false, t1_fu: true,
-        t1_av: false, t1_ar: false, t1_vlim: 0,
+        t1_av: false, t1_ar: false, t1_vlim: 0, t1_pos: 0,
         t2_traction: 0, t2_fs: false, t2_fu: true,
-        t2_av: false, t2_ar: false, t2_vlim: 0,
+        t2_av: false, t2_ar: false, t2_vlim: 0, t2_pos: 0,
         aig1: false, aig2: false,
         sig1: 0, sig2: 0,
     };
@@ -133,6 +135,7 @@ function construireTrame(coils, regs) {
         t1_av: !!coils[C.T1_SensAvant],
         t1_ar: !!coils[C.T1_SensArriere],
         t1_vlim: regs[R.T1_VitesseLimite],
+        t1_pos: regs[R.T1_Position],
 
         t2_traction: regs[R.T2_Traction],
         t2_fs: !!coils[C.T2_FreinService],
@@ -140,6 +143,7 @@ function construireTrame(coils, regs) {
         t2_av: !!coils[C.T2_SensAvant],
         t2_ar: !!coils[C.T2_SensArriere],
         t2_vlim: regs[R.T2_VitesseLimite],
+        t2_pos: regs[R.T2_Position],
 
         aig1: !!coils[C.AIG1_Deviation],
         aig2: !!coils[C.AIG2_Deviation],

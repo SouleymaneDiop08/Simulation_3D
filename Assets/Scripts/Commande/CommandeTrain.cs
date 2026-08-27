@@ -24,6 +24,12 @@ public struct CommandeTrain
     /// <summary>Vitesse maximale autorisée, en km/h.</summary>
     public int vitesseLimiteKmh;
 
+    /// <summary>
+    /// Position du convoi sur la voie, en décimètres, telle que l'automate
+    /// la calcule. Négative si l'automate ne la fournit pas.
+    /// </summary>
+    public int positionDecimetres;
+
 
     /// <summary>
     /// Ordre de repli : traction nulle, frein d'urgence serré, aucun sens
@@ -37,8 +43,14 @@ public struct CommandeTrain
         freinUrgence = true,
         sensAvant = false,
         sensArriere = false,
-        vitesseLimiteKmh = 0
+        vitesseLimiteKmh = 0,
+        positionDecimetres = -1
     };
+
+
+    /// <summary>Position en mètres, ou -1 si l'automate ne la fournit pas.</summary>
+    public float PositionMetres =>
+        positionDecimetres < 0 ? -1f : positionDecimetres / 10f;
 
 
     /// <summary>Traction effective, de 0 à 1, une fois les freins pris en compte.</summary>

@@ -48,6 +48,7 @@ public class PlcLink : MonoBehaviour
         public bool t1_av;          // sens avant
         public bool t1_ar;          // sens arrière
         public int t1_vlim;         // km/h
+        public int t1_pos;          // decimetres
 
         public int t2_traction;
         public bool t2_fs;
@@ -55,6 +56,7 @@ public class PlcLink : MonoBehaviour
         public bool t2_av;
         public bool t2_ar;
         public int t2_vlim;
+        public int t2_pos;
 
         public bool aig1;           // true = déviation
         public bool aig2;
@@ -347,7 +349,8 @@ public class PlcLink : MonoBehaviour
             freinUrgence = t.t1_fu,
             sensAvant = t.t1_av,
             sensArriere = t.t1_ar,
-            vitesseLimiteKmh = t.t1_vlim
+            vitesseLimiteKmh = t.t1_vlim,
+            positionDecimetres = t.t1_pos
         });
 
         poste.AppliquerTrain(1, new CommandeTrain
@@ -357,7 +360,8 @@ public class PlcLink : MonoBehaviour
             freinUrgence = t.t2_fu,
             sensAvant = t.t2_av,
             sensArriere = t.t2_ar,
-            vitesseLimiteKmh = t.t2_vlim
+            vitesseLimiteKmh = t.t2_vlim,
+            positionDecimetres = t.t2_pos
         });
 
         poste.CommanderAiguille(0, t.aig1);

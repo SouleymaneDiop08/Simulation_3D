@@ -20,8 +20,15 @@ public class TrainCollisionDetector : MonoBehaviour
 
 
     [Header("Détection")]
-    [Tooltip("Distance de déclenchement du choc, en mètres.")]
-    public float distanceDetection = 5f;
+    [Tooltip("Recouvrement le long de la voie déclenchant le choc, en mètres. " +
+             "Mesuré sur la distance curviligne, donc valable quel que soit " +
+             "le sens de marche des deux convois.")]
+    public float distanceDetection = 20f;
+
+    [Tooltip("Secondes ignorées après le démarrage. Le temps que chaque convoi " +
+             "soit posé sur sa voie, les wagons occupent encore leur position " +
+             "d'édition — d'où de faux chocs à la première image.")]
+    public float delaiArmement = 2f;
 
 
     [Header("Impact")]
@@ -33,9 +40,18 @@ public class TrainCollisionDetector : MonoBehaviour
     public GameObject explosionPrefab;
 
     [Tooltip("Durée de vie de l'effet d'explosion, en secondes.")]
-    public float dureeExplosion = 5f;
+    public float dureeExplosion = 12f;
 
-    public float echelleExplosion = 5f;
+    [Tooltip("Facteur d'échelle appliqué à l'effet.")]
+    public float echelleExplosion = 25f;
+
+    [Tooltip("Nombre d'effets créés, répartis le long du point d'impact. " +
+             "Un seul effet se perd à l'échelle d'un convoi.")]
+    [Min(1)]
+    public int nombreEclats = 5;
+
+    [Tooltip("Dispersion des éclats autour du point d'impact, en mètres.")]
+    public float dispersionEclats = 12f;
 
 
     private bool collisionEffectuee = false;
@@ -58,7 +74,11 @@ public class TrainCollisionDetector : MonoBehaviour
         if (train == null || collisionEffectuee)
             return;
 
-        float seuilCarre = distanceDetection * distanceDetection;
+        // Le temps que TrainController pose ses wagons sur la voie, ceux-ci
+        // occupent encore leur position d'édition. Sans ce délai, un choc
+        // fantôme se déclenchait dès la première image.
+        if (Time.timeSinceLevelLoad < delaiArmement)
+            return;
 
         for (int i = 0; i < Detecteurs.Count; i++)
         {
@@ -67,25 +87,28 @@ public class TrainCollisionDetector : MonoBehaviour
             if (autre == null || autre == this)
                 continue;
 
-            if (autre.collisionEffectuee)
+            if (autre.collisionEffectuee || autre.train == null)
                 continue;
 
             // Deux détecteurs du même convoi ne se percutent pas
-            if (autre.train == null || autre.train == train)
+            if (autre.train == train)
                 continue;
 
             // Deux convois sur des voies différentes ne peuvent pas se
-            // heurter. Sans ce test, les voies parallèles de la scène —
-            // distantes de 5,6 m seulement, pour un seuil de détection de
-            // 5 m — provoquaient un faux choc au croisement des navettes :
-            // le convoi passait en Impact puis en Bloque, état sans retour.
-            if (autre.train.trackSystem != train.trackSystem)
+            // heurter, si proches soient-ils : les voies parallèles de la
+            // scène ne sont distantes que de 5,6 m et se croisaient sans
+            // arrêt. Le choc n'a de sens que sur le MÊME rail.
+            if (autre.train.trackSystem == null ||
+                autre.train.trackSystem != train.trackSystem)
                 continue;
 
-            float distanceCarree =
-                (autre.transform.position - transform.position).sqrMagnitude;
+            // Recouvrement mesuré sur la distance curviligne, et non en
+            // distance euclidienne : deux convois qui se croisent sur le
+            // même rail se heurtent, qu'ils aillent l'un vers l'autre ou
+            // qu'ils se rattrapent par l'arrière.
+            float ecart = Mathf.Abs(autre.train.distanceTrain - train.distanceTrain);
 
-            if (distanceCarree <= seuilCarre)
+            if (ecart <= distanceDetection)
             {
                 CollisionTrain(autre);
                 return;
@@ -110,23 +133,45 @@ public class TrainCollisionDetector : MonoBehaviour
         AppliquerDegats(train, pointImpact);
         AppliquerDegats(autre.train, pointImpact);
 
-        if (explosionPrefab != null)
-        {
-            GameObject explosion = Instantiate(
-                explosionPrefab,
-                pointImpact,
-                Quaternion.identity
-            );
-
-            explosion.transform.localScale = Vector3.one * echelleExplosion;
-
-            // Sans destruction programmée, chaque choc laissait un objet
-            // d'effet dans la scène jusqu'à la fin de la partie.
-            Destroy(explosion, dureeExplosion);
-        }
+        DeclencherExplosion(pointImpact);
 
         train.AppliquerImpact(forceImpact, dureeImpact);
         autre.train.AppliquerImpact(forceImpact, dureeImpact);
+    }
+
+
+    /// <summary>
+    /// Crée l'effet visuel du choc. Plusieurs éclats dispersés plutôt qu'un
+    /// seul : à l'échelle d'un convoi de 63 m, un unique effet passe inaperçu.
+    /// </summary>
+    private void DeclencherExplosion(Vector3 pointImpact)
+    {
+        if (explosionPrefab == null)
+            return;
+
+        for (int i = 0; i < nombreEclats; i++)
+        {
+            // Le premier éclat est centré sur l'impact, les suivants sont
+            // dispersés autour et décalés dans le temps.
+            Vector3 position = pointImpact;
+
+            if (i > 0)
+            {
+                Vector2 disque = Random.insideUnitCircle * dispersionEclats;
+                position += new Vector3(disque.x, Random.Range(0f, dispersionEclats * 0.5f), disque.y);
+            }
+
+            GameObject eclat = Instantiate(explosionPrefab, position, Random.rotation);
+
+            float echelle = echelleExplosion * Random.Range(0.6f, 1.4f);
+            eclat.transform.localScale = Vector3.one * echelle;
+
+            // Sans destruction programmée, chaque choc laisserait ses effets
+            // dans la scène jusqu'à la fin de la partie.
+            Destroy(eclat, dureeExplosion);
+        }
+
+        Debug.LogWarning($"[Choc] {nombreEclats} éclats créés en {pointImpact}", this);
     }
 
 

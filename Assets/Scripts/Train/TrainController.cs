@@ -56,6 +56,12 @@ public class TrainController : MonoBehaviour
     [Header("Physique")]
     public TrainPhysicsController physics;
 
+    [Header("Pilotage")]
+    [Tooltip("Vitesse de rattrapage de la position commandée par l'automate, " +
+             "en fraction par seconde. Lisse les paliers de 10 cm reçus à 20 Hz.")]
+    [Min(1f)]
+    public float rattrapagePosition = 12f;
+
 
     [Header("Impact")]
     [Tooltip("Multiplicateur appliqué à la force de recul reçue lors d'un choc.")]
@@ -109,6 +115,25 @@ public class TrainController : MonoBehaviour
     private float dureeImpact = 0f;
 
     private TrackSystem prochaineVoie;
+
+    private float _positionCommandee = -1f;
+
+    /// <summary>Vrai lorsque l'automate fournit la position du convoi.</summary>
+    public bool PiloteEnPosition => _positionCommandee >= 0f;
+
+
+    /// <summary>
+    /// Position imposée par l'automate, en mètres. Dès qu'elle est fournie, la
+    /// simulation cesse d'intégrer la vitesse : elle se contente de suivre.
+    ///
+    /// C'est ce qui rend la vue reproductible — un rechargement de page replace
+    /// le convoi exactement où l'automate le situe, sans dérive possible entre
+    /// deux intégrations indépendantes.
+    /// </summary>
+    public void DefinirPositionCommandee(float metres)
+    {
+        _positionCommandee = metres;
+    }
 
 
     private void Start()
@@ -171,6 +196,12 @@ public class TrainController : MonoBehaviour
 
     private void MettreAJourDeplacement()
     {
+        if (PiloteEnPosition)
+        {
+            SuivrePositionCommandee();
+            return;
+        }
+
         float vitesseReelle;
 
         switch (sens)
@@ -212,6 +243,31 @@ public class TrainController : MonoBehaviour
             // Le convoi repart dans l'autre sens : la butée est levée
             etat = EtatTrain.Normal;
         }
+    }
+
+
+    /// <summary>
+    /// Rejoint la position dictée par l'automate. Le lissage évite les paliers
+    /// visibles : la position arrive en décimètres, vingt fois par seconde,
+    /// alors que l'image est rendue bien plus souvent.
+    /// </summary>
+    private void SuivrePositionCommandee()
+    {
+        float cible = _positionCommandee;
+
+        if (trackSystem != null && trackSystem.Pret)
+            cible = Mathf.Clamp(cible, LimiteBasse, LimiteHaute);
+
+        // Un écart important vient d'un rechargement ou d'une reprise de
+        // liaison : on s'y place d'un coup plutôt que de traverser la ligne.
+        if (Mathf.Abs(cible - distanceTrain) > 50f)
+            distanceTrain = cible;
+        else
+            distanceTrain = Mathf.Lerp(distanceTrain, cible,
+                                       1f - Mathf.Exp(-rattrapagePosition * Time.deltaTime));
+
+        if (etat == EtatTrain.FinDeVoie)
+            etat = EtatTrain.Normal;
     }
 
 

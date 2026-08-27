@@ -104,7 +104,10 @@ VAR_INPUT
     TractionMarche : INT;
     VitesseLigne : INT;
     VitesseApproche : INT;
-    DureeMarche : INT;
+    ButeeBasse : INT;
+    ButeeHaute : INT;
+    DistanceApproche : INT;
+    DistanceArret : INT;
 END_VAR
 
 VAR_OUTPUT
@@ -118,12 +121,25 @@ VAR_OUTPUT
     EnGare : BOOL;
     EnApproche : BOOL;
     VersGareB : BOOL;
+    Position : INT;
+    Vitesse : INT;
 END_VAR
 
 VAR
     Cycles : INT;
     EtapePrec : INT;
+    Accumulateur : INT;
+    Avance : INT;
+    VitesseVoulue : INT;
+    Initialise : BOOL;
 END_VAR
+
+
+(* Position initiale : le convoi est pose au-dela du quai. *)
+IF NOT Initialise THEN
+    Initialise := TRUE;
+    Position := ButeeBasse;
+END_IF;
 
 
 (* Le poste peut retirer l'autorisation a tout moment *)
@@ -161,7 +177,7 @@ CASE Etape OF
         END_IF;
 
 
-    (* ---------- 10 : GARE A, preparation du depart (80 cycles = 4 s) ---------- *)
+    (* ---------- 10 : A QUAI, preparation du depart (80 cycles = 4 s) ---------- *)
     10:
         Traction := 0;
         FreinUrgence := TRUE;
@@ -169,19 +185,18 @@ CASE Etape OF
         VitesseLimite := 0;
         EnGare := TRUE;
         EnApproche := FALSE;
-        VersGareB := TRUE;
 
         IF Cycles >= 80 THEN
             Etape := 20;
         END_IF;
 
 
-    (* ---------- 20 : DEPART VERS B (30 cycles = 1,5 s) ---------- *)
+    (* ---------- 20 : DESSERRAGE ET ENGAGEMENT DU SENS (30 cycles) ---------- *)
     20:
         FreinUrgence := FALSE;
         FreinService := FALSE;
-        SensAvant := TRUE;
-        SensArriere := FALSE;
+        SensAvant := VersGareB;
+        SensArriere := NOT VersGareB;
         VitesseLimite := VitesseLigne;
         EnGare := FALSE;
 
@@ -190,38 +205,56 @@ CASE Etape OF
         END_IF;
 
 
-    (* ---------- 30 : MARCHE EN LIGNE VERS B ---------- *)
+    (* ---------- 30 : MARCHE EN LIGNE ---------- *)
+    (* Transition sur la POSITION et non sur un chronometre : le convoi
+       aborde l'approche au bon endroit, quelle que soit sa cinematique. *)
     30:
         Traction := TractionMarche;
+        VitesseLimite := VitesseLigne;
+        EnApproche := FALSE;
 
-        IF Cycles >= DureeMarche THEN
-            Etape := 40;
+        IF VersGareB THEN
+            IF Position >= (ButeeHaute - DistanceApproche) THEN
+                Etape := 40;
+            END_IF;
+        ELSE
+            IF Position <= (ButeeBasse + DistanceApproche) THEN
+                Etape := 40;
+            END_IF;
         END_IF;
 
 
-    (* ---------- 40 : APPROCHE DE B (240 cycles = 12 s) ---------- *)
+    (* ---------- 40 : APPROCHE RALENTIE ---------- *)
     40:
         Traction := TractionMarche / 3;
         VitesseLimite := VitesseApproche;
         EnApproche := TRUE;
 
-        IF Cycles >= 240 THEN
-            Etape := 50;
+        IF VersGareB THEN
+            IF Position >= (ButeeHaute - DistanceArret) THEN
+                Etape := 50;
+            END_IF;
+        ELSE
+            IF Position <= (ButeeBasse + DistanceArret) THEN
+                Etape := 50;
+            END_IF;
         END_IF;
 
 
-    (* ---------- 50 : FREINAGE D'ARRET EN B ---------- *)
+    (* ---------- 50 : FREINAGE D'ARRET ---------- *)
+    (* On attend l'arret reel, pas une duree : le convoi s'immobilise a
+       quai meme si le freinage a ete plus long que prevu. *)
     50:
         Traction := 0;
         FreinService := TRUE;
         VitesseLimite := 0;
 
-        IF Cycles >= 240 THEN
+        IF Vitesse <= 0 OR Cycles >= 600 THEN
             Etape := 60;
         END_IF;
 
 
-    (* ---------- 60 : STATIONNEMENT EN B (300 cycles = 15 s) ---------- *)
+    (* ---------- 60 : STATIONNEMENT (300 cycles = 15 s) ---------- *)
     60:
         FreinUrgence := TRUE;
         FreinService := FALSE;
@@ -231,65 +264,7 @@ CASE Etape OF
         EnApproche := FALSE;
 
         IF Cycles >= 300 THEN
-            Etape := 70;
-        END_IF;
-
-
-    (* ---------- 70 : DEPART VERS A, sens inverse ---------- *)
-    70:
-        VersGareB := FALSE;
-        FreinUrgence := FALSE;
-        SensAvant := FALSE;
-        SensArriere := TRUE;
-        VitesseLimite := VitesseLigne;
-        EnGare := FALSE;
-
-        IF Cycles >= 30 THEN
-            Etape := 80;
-        END_IF;
-
-
-    (* ---------- 80 : MARCHE EN LIGNE VERS A ---------- *)
-    80:
-        Traction := TractionMarche;
-
-        IF Cycles >= DureeMarche THEN
-            Etape := 90;
-        END_IF;
-
-
-    (* ---------- 90 : APPROCHE DE A ---------- *)
-    90:
-        Traction := TractionMarche / 3;
-        VitesseLimite := VitesseApproche;
-        EnApproche := TRUE;
-
-        IF Cycles >= 240 THEN
-            Etape := 100;
-        END_IF;
-
-
-    (* ---------- 100 : FREINAGE D'ARRET EN A ---------- *)
-    100:
-        Traction := 0;
-        FreinService := TRUE;
-        VitesseLimite := 0;
-
-        IF Cycles >= 240 THEN
-            Etape := 110;
-        END_IF;
-
-
-    (* ---------- 110 : STATIONNEMENT EN A ---------- *)
-    110:
-        FreinUrgence := TRUE;
-        FreinService := FALSE;
-        SensAvant := FALSE;
-        SensArriere := FALSE;
-        EnGare := TRUE;
-        EnApproche := FALSE;
-
-        IF Cycles >= 300 THEN
+            VersGareB := NOT VersGareB;
             Etape := 10;
         END_IF;
 
@@ -297,6 +272,99 @@ ELSE
     Etape := 0;
 
 END_CASE;
+
+
+(*
+    ------------------------------------------------------------------
+    MODELE DE MARCHE
+    ------------------------------------------------------------------
+    L'automate calcule lui-meme la vitesse et la position du convoi, et
+    les transmet. La simulation n'integre plus rien : elle place le train
+    ou l'automate le dit.
+
+    C'est ce qui rend la vue reproductible — un rechargement de page
+    replace le convoi exactement ou il se trouve, sans desynchronisation.
+
+    Unites : vitesse en DECIMETRES PAR SECONDE, position en DECIMETRES.
+    A 25 m/s la vitesse vaut 250 ; la voie de 1860 m fait 18600 dm, ce
+    qui tient largement dans un INT.
+
+      acceleration 5 m/s2   -> 50 dm/s2  -> 2,5 dm/s par cycle
+      frein service 8 m/s2  -> 80 dm/s2  -> 4 dm/s par cycle
+      frein urgence 20 m/s2 -> 200 dm/s2 -> 10 dm/s par cycle
+
+    Les pas sont doubles et la periode comptee sur deux cycles pour
+    rester en entiers sans perdre la moitie de l'acceleration.
+*)
+
+(* Vitesse voulue, deduite de la traction : 1000 pour mille = 250 dm/s *)
+VitesseVoulue := Traction / 4;
+
+IF FreinUrgence THEN
+    VitesseVoulue := 0;
+ELSIF FreinService THEN
+    VitesseVoulue := 0;
+END_IF;
+
+IF SensAvant = FALSE AND SensArriere = FALSE THEN
+    VitesseVoulue := 0;
+END_IF;
+
+
+(* Rapprochement de la vitesse voulue, avec le taux propre a l'etat *)
+IF Vitesse < VitesseVoulue THEN
+
+    Vitesse := Vitesse + 3;
+
+    IF Vitesse > VitesseVoulue THEN
+        Vitesse := VitesseVoulue;
+    END_IF;
+
+ELSIF Vitesse > VitesseVoulue THEN
+
+    IF FreinUrgence THEN
+        Vitesse := Vitesse - 10;
+    ELSIF FreinService THEN
+        Vitesse := Vitesse - 4;
+    ELSE
+        Vitesse := Vitesse - 3;
+    END_IF;
+
+    IF Vitesse < VitesseVoulue THEN
+        Vitesse := VitesseVoulue;
+    END_IF;
+
+END_IF;
+
+IF Vitesse < 0 THEN
+    Vitesse := 0;
+END_IF;
+
+
+(* Integration exacte : l'accumulateur retient les fractions de decimetre,
+   si bien qu'aucune erreur ne s'accumule sur la duree. *)
+Accumulateur := Accumulateur + Vitesse;
+Avance := Accumulateur / 20;
+Accumulateur := Accumulateur - (Avance * 20);
+
+IF SensAvant THEN
+    Position := Position + Avance;
+ELSIF SensArriere THEN
+    Position := Position - Avance;
+END_IF;
+
+
+(* Butees de quai : l'automate les connait, il ne commande donc jamais
+   au-dela. La simulation les applique aussi, en dernier recours. *)
+IF Position > ButeeHaute THEN
+    Position := ButeeHaute;
+    Vitesse := 0;
+END_IF;
+
+IF Position < ButeeBasse THEN
+    Position := ButeeBasse;
+    Vitesse := 0;
+END_IF;
 
 END_FUNCTION_BLOCK
 
@@ -318,6 +386,7 @@ PROGRAM main
       %QW0..%QW1    traction, 0 a 1000 pour mille
       %QW2..%QW3    aspect des signaux, 0 carre 1 avertissement 2 voie libre
       %QW4..%QW5    vitesse autorisee en cabine, km/h
+      %QW6..%QW7    position du convoi sur la voie, en DECIMETRES
       %QW10         etape de la navette 1, pour la supervision
     ==================================================================
 *)
@@ -339,6 +408,8 @@ VAR
     SIG2_Aspect AT %QW3 : INT;
     T1_VitesseLimite AT %QW4 : INT;
     T2_VitesseLimite AT %QW5 : INT;
+    T1_Position AT %QW6 : INT;
+    T2_Position AT %QW7 : INT;
     Etape AT %QW10 : INT;
     Heartbeat AT %QX2.0 : BOOL;
     ScenarioActif AT %QX2.1 : BOOL;
@@ -366,22 +437,19 @@ END_VAR
       acceleration                 5 m/s2
       frein de service             8 m/s2
 
-    Distance parcourue sur une marche de 2000 cycles (100 s) :
+    Les butees sont exprimees en DECIMETRES pour l'automate :
 
-      17,5 x (100 - 3,5) = 1689 m       montee en vitesse comprise
-      approche 12 s a 5 m/s ..... 70 m
-      freinage d'arret ..........  2 m
-                                 ------
-                                 1761 m   pour 1747 utiles
+      butee basse    880 dm  =   88 m
+      butee haute  18350 dm  = 1835 m
 
-    Le calcul vise volontairement 14 m AU-DELA de la butee : le convoi
-    atteint ainsi la gare a coup sur, et la butee de quai absorbe le
-    reliquat. Cote simulation cette butee n'est pas verrouillante, le
-    convoi repart des que le sens oppose est commande.
+    Le sequenceur ne se fie plus a des durees. Il change d'etape sur la
+    POSITION : approche a 70 m de la butee, freinage a 15 m, arret
+    constate sur la vitesse. Un ecart de cinematique ne peut donc plus
+    faire manquer une gare, alors qu'un chronometre mal calibre y menait
+    tout droit.
 
-    C'est la simulation qui garantit la distance de garde, pas ces
-    durees : l'automate est aveugle et ne saurait pas s'arreter au bon
-    endroit. Les durees servent seulement a ce que le convoi arrive.
+    L'automate n'est plus aveugle : il calcule lui-meme la position et la
+    transmet. La simulation ne fait que l'appliquer.
     ==================================================================
 *)
 VAR CONSTANT
@@ -393,7 +461,10 @@ VAR CONSTANT
     TRACTION_MARCHE : INT := 700;
     VITESSE_LIGNE : INT := 90;
     VITESSE_APPROCHE : INT := 30;
-    DUREE_MARCHE : INT := 2000;
+    BUTEE_BASSE : INT := 880;
+    BUTEE_HAUTE : INT := 18350;
+    DISTANCE_APPROCHE : INT := 700;
+    DISTANCE_ARRET : INT := 150;
     RETARD_T1 : INT := 40;
     RETARD_T2 : INT := 1200;
     DEMI_PERIODE_COEUR : INT := 10;
@@ -463,7 +534,10 @@ NavetteT1(
     TractionMarche := TRACTION_MARCHE,
     VitesseLigne := VITESSE_LIGNE,
     VitesseApproche := VITESSE_APPROCHE,
-    DureeMarche := DUREE_MARCHE
+    ButeeBasse := BUTEE_BASSE,
+    ButeeHaute := BUTEE_HAUTE,
+    DistanceApproche := DISTANCE_APPROCHE,
+    DistanceArret := DISTANCE_ARRET
 );
 
 NavetteT2(
@@ -472,7 +546,10 @@ NavetteT2(
     TractionMarche := TRACTION_MARCHE,
     VitesseLigne := VITESSE_LIGNE,
     VitesseApproche := VITESSE_APPROCHE,
-    DureeMarche := DUREE_MARCHE
+    ButeeBasse := BUTEE_BASSE,
+    ButeeHaute := BUTEE_HAUTE,
+    DistanceApproche := DISTANCE_APPROCHE,
+    DistanceArret := DISTANCE_ARRET
 );
 
 
@@ -492,6 +569,9 @@ T2_FreinUrgence := NavetteT2.FreinUrgence;
 T2_SensAvant := NavetteT2.SensAvant;
 T2_SensArriere := NavetteT2.SensArriere;
 T2_VitesseLimite := NavetteT2.VitesseLimite;
+
+T1_Position := NavetteT1.Position;
+T2_Position := NavetteT2.Position;
 
 Etape := NavetteT1.Etape;
 
