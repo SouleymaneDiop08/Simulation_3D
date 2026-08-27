@@ -2,20 +2,17 @@ using UnityEngine;
 
 
 /// <summary>
-/// Point d'entrée unique des ordres extérieurs dans la simulation.
+/// Frontière unique entre la simulation et le monde extérieur, dans les deux
+/// sens : elle applique les ordres reçus, et collecte l'état à remonter.
 ///
-/// Toute source de commande — aujourd'hui l'automate OpenPLC via la passerelle,
-/// demain autre chose — passe par ici et par rien d'autre. Le transport n'a
-/// donc à connaître ni TrainController, ni TrainPhysicsController, ni la
-/// convention d'unités : il traduit sa trame en CommandeTrain et appelle.
+/// Le transport n'a donc à connaître ni TrainController, ni NavetteController,
+/// ni la convention d'unités. Il traduit sa trame en CommandeTrain, appelle, et
+/// récupère un EtatTrainMesure.
 ///
-/// Ce qui vit ici, et pas dans le transport :
-///   - la conversion km/h → m/s ;
-///   - la détection de front, pour ne pas rappeler les commandes à 50 Hz ;
-///   - le chien de garde et le repli en sécurité.
-///
-/// Ainsi le repli protège quel que soit le transport, y compris si celui-ci
-/// plante : c'est PosteDeCommande qui compte le temps écoulé, pas la liaison.
+/// Différence de fond avec la version précédente : la simulation N'ATTEND PLUS
+/// d'ordres pour fonctionner. Les navettes roulent seules ; l'automate ne fait
+/// qu'intervenir. Sans liaison, le procédé continue sur ses valeurs nominales —
+/// couper le réseau perturbe la supervision, pas l'installation.
 /// </summary>
 [DefaultExecutionOrder(-20)]
 public class PosteDeCommande : MonoBehaviour
@@ -38,25 +35,28 @@ public class PosteDeCommande : MonoBehaviour
     public SignalController[] signaux;
 
 
-    [Header("Sécurité")]
-    [Tooltip("Secondes sans ordre reçu avant serrage automatique des freins.")]
-    public float delaiSansOrdre = 2f;
+    [Header("Cantonnement")]
+    [Tooltip("Nombre de sections découpant chaque voie. Sert à remonter " +
+             "l'occupation, matière première d'un enclenchement.")]
+    [Min(1)]
+    public int nombreCantons = 8;
+
+
+    [Header("Supervision")]
+    [Tooltip("Secondes sans ordre avant de considérer l'automate absent. Les " +
+             "navettes ne s'arrêtent pas pour autant : elles reprennent leurs " +
+             "valeurs nominales.")]
+    public float delaiSansOrdre = 3f;
 
 
     [Header("Diagnostic (lecture seule)")]
-    public bool liaisonActive;
+    public bool automatePresent;
     public string sourceCommande = "(aucune)";
     public float secondesDepuisDernierOrdre;
-    public string dernierMotifSecurite = "";
 
 
     private float _dernierOrdre;
-    private bool _replieEnSecurite;
-
-    private CommandeTrain[] _precedentes;
-    private bool[] _aiguillesPrecedentes;
-    private bool[] _aiguillesConnues;
-    private bool _premiereApplication = true;
+    private NavetteController[] _navettes;
 
 
     // ======================================================================
@@ -79,11 +79,14 @@ public class PosteDeCommande : MonoBehaviour
         if (aiguillages == null) aiguillages = new AiguillageController[0];
         if (signaux == null) signaux = new SignalController[0];
 
-        _precedentes = new CommandeTrain[trains.Length];
-        _aiguillesPrecedentes = new bool[aiguillages.Length];
-        _aiguillesConnues = new bool[aiguillages.Length];
+        _navettes = new NavetteController[trains.Length];
 
-        // Aucun ordre n'a encore été reçu : le chien de garde part expiré.
+        for (int i = 0; i < trains.Length; i++)
+        {
+            if (trains[i] != null)
+                _navettes[i] = trains[i].GetComponent<NavetteController>();
+        }
+
         _dernierOrdre = float.NegativeInfinity;
     }
 
@@ -95,37 +98,38 @@ public class PosteDeCommande : MonoBehaviour
     }
 
 
-    private void Start()
-    {
-        // Tant qu'aucune source ne s'est manifestée, les convois restent
-        // freinés. Un train immobile au démarrage n'est pas un défaut : c'est
-        // l'absence d'automate.
-        ReplierEnSecurite("aucune source de commande");
-    }
-
-
     private void FixedUpdate()
     {
         secondesDepuisDernierOrdre = float.IsNegativeInfinity(_dernierOrdre)
             ? float.PositiveInfinity
             : Time.unscaledTime - _dernierOrdre;
 
-        if (secondesDepuisDernierOrdre > delaiSansOrdre)
-        {
-            if (liaisonActive)
-                Debug.LogWarning($"[Poste] Plus d'ordre depuis {delaiSansOrdre} s.", this);
+        bool present = secondesDepuisDernierOrdre <= delaiSansOrdre;
 
-            liaisonActive = false;
-            ReplierEnSecurite("chien de garde : plus d'ordre reçu");
+        if (present == automatePresent)
+            return;
+
+        automatePresent = present;
+
+        if (present)
+        {
+            Debug.Log("[Poste] Automate présent.", this);
+            return;
         }
+
+        // L'automate a disparu : on rend la main aux valeurs nominales plutôt
+        // que de freiner. Le procédé doit survivre à la perte de supervision.
+        Debug.LogWarning("[Poste] Automate absent — retour aux valeurs nominales.", this);
+
+        for (int i = 0; i < trains.Length; i++)
+            AppliquerTrain(i, CommandeTrain.Nominale);
     }
 
 
     // ======================================================================
-    // INTERFACE POUR LES SOURCES DE COMMANDE
+    // ORDRES REÇUS
     // ======================================================================
 
-    /// <summary>Annonce la source active. Purement informatif, pour le diagnostic.</summary>
     public void DeclarerSource(string nom)
     {
         sourceCommande = string.IsNullOrEmpty(nom) ? "(aucune)" : nom;
@@ -133,197 +137,166 @@ public class PosteDeCommande : MonoBehaviour
     }
 
 
-    /// <summary>
-    /// À appeler à chaque trame reçue, même si aucun ordre n'a changé : c'est
-    /// ce qui réarme le chien de garde.
-    /// </summary>
+    /// <summary>À appeler à chaque trame reçue : c'est ce qui atteste la présence.</summary>
     public void SignalerVie()
     {
         _dernierOrdre = Time.unscaledTime;
-
-        if (!liaisonActive)
-        {
-            liaisonActive = true;
-            dernierMotifSecurite = "";
-
-            // Au retour de la liaison, tout est réappliqué : l'état mémorisé
-            // pour la détection de front n'est plus fiable.
-            _premiereApplication = true;
-            _replieEnSecurite = false;
-
-            Debug.Log("[Poste] Liaison rétablie.", this);
-        }
     }
 
 
-    /// <summary>Applique un jeu d'ordres à un convoi.</summary>
+    /// <summary>Applique les leviers de l'automate à une navette.</summary>
     public void AppliquerTrain(int index, CommandeTrain commande)
     {
         if (index < 0 || index >= trains.Length)
             return;
 
-        TrainController train = trains[index];
+        NavetteController navette = _navettes[index];
 
-        if (train == null || train.physics == null)
+        if (navette == null)
             return;
 
-        // ---- Sens ----
-        if (commande.sensAvant && !commande.sensArriere)
-            train.sens = TrainController.SensTrain.Avant;
-        else if (commande.sensArriere && !commande.sensAvant)
-            train.sens = TrainController.SensTrain.Arriere;
-        else
-            train.sens = TrainController.SensTrain.Neutre;
-
-        // ---- Vitesse autorisée : km/h reçus → m/s internes ----
-        train.vitesseAutorisee = commande.vitesseLimiteKmh / TrainController.MS_VERS_KMH;
-
-        // ---- Position imposée par l'automate ----
-        // Fournie, elle prime sur l'intégration locale de la vitesse : c'est
-        // l'automate qui détient la position, la simulation ne fait que suivre.
-        if (commande.positionDecimetres >= 0)
-            train.DefinirPositionCommandee(commande.PositionMetres);
-
-        // ---- Freins et traction, sur changement uniquement ----
-        CommandeTrain precedente = _precedentes[index];
-
-        bool changement = _premiereApplication
-                          || commande.freinUrgence != precedente.freinUrgence
-                          || commande.freinService != precedente.freinService
-                          || commande.tractionPourMille != precedente.tractionPourMille
-                          || commande.sensAvant != precedente.sensAvant
-                          || commande.sensArriere != precedente.sensArriere;
-
-        if (changement)
-        {
-            if (commande.freinUrgence)
-            {
-                train.physics.FreinUrgence();
-            }
-            else if (commande.freinService)
-            {
-                train.physics.FreinService();
-            }
-            else
-            {
-                // Le desserrage est explicite : ChangerTraction ne touche pas
-                // à l'état de frein, pour qu'une consigne de traction ne puisse
-                // pas annuler un freinage d'urgence par inadvertance.
-                train.physics.RelacherFrein();
-                train.physics.ChangerTraction(commande.TractionEffective);
-            }
-        }
-
-        _precedentes[index] = commande;
+        navette.consigneVitesseKmh = commande.consigneVitesseKmh;
+        navette.arretUrgence = commande.arretUrgence;
+        navette.autorisee = commande.autorisee;
     }
 
 
     public void CommanderAiguille(int index, bool deviation)
     {
-        if (index < 0 || index >= aiguillages.Length)
+        if (index < 0 || index >= aiguillages.Length || aiguillages[index] == null)
             return;
 
-        AiguillageController aiguillage = aiguillages[index];
-
-        if (aiguillage == null)
-            return;
-
-        if (_aiguillesConnues[index] && deviation == _aiguillesPrecedentes[index])
-            return;
-
-        if (deviation)
-            aiguillage.ActiverDeviation();
-        else
-            aiguillage.ActiverPrincipale();
-
-        _aiguillesPrecedentes[index] = deviation;
-        _aiguillesConnues[index] = true;
+        // Pas de détection de front ici : CommanderDeviation ignore d'elle-même
+        // une commande déjà satisfaite ou une manœuvre en cours.
+        aiguillages[index].CommanderDeviation(deviation);
     }
 
 
     public void CommanderSignal(int index, AspectSignal aspect)
     {
-        if (index < 0 || index >= signaux.Length)
+        if (index < 0 || index >= signaux.Length || signaux[index] == null)
             return;
 
-        if (signaux[index] != null)
-            signaux[index].DefinirAspect(aspect);
+        signaux[index].DefinirAspect(aspect);
     }
 
 
-    /// <summary>Fin d'une trame : valide l'application et lève le drapeau de première passe.</summary>
-    public void TerminerTrame()
+    // ======================================================================
+    // ÉTAT REMONTÉ
+    // ======================================================================
+
+    /// <summary>Mesures d'un convoi, telles que l'automate les recevra.</summary>
+    public EtatTrainMesure MesurerTrain(int index)
     {
-        _premiereApplication = false;
+        EtatTrainMesure mesure = new EtatTrainMesure();
+
+        if (index < 0 || index >= trains.Length || trains[index] == null)
+            return mesure;
+
+        TrainController train = trains[index];
+
+        mesure.positionDecimetres = Mathf.RoundToInt(train.distanceTrain * 10f);
+        mesure.vitesseKmhDix = Mathf.RoundToInt(train.VitesseKmh * 10f);
+        mesure.canton = CantonDe(train);
+
+        NavetteController navette = _navettes[index];
+
+        if (train.etat == TrainController.EtatTrain.Bloque ||
+            train.etat == TrainController.EtatTrain.Impact)
+            mesure.etat = EtatTrainMesure.ETAT_ACCIDENTE;
+        else if (Deraille(train))
+            mesure.etat = EtatTrainMesure.ETAT_DERAILLE;
+        else if (navette != null && navette.AQuaiMaintenant)
+            mesure.etat = EtatTrainMesure.ETAT_A_QUAI;
+        else
+            mesure.etat = EtatTrainMesure.ETAT_EN_LIGNE;
+
+        return mesure;
     }
 
 
-    // ======================================================================
-    // REPLI EN SÉCURITÉ
-    // ======================================================================
+    /// <summary>Position réelle d'une aiguille : 0 principale, 1 déviation, 2 en manœuvre.</summary>
+    public int ControleAiguille(int index)
+    {
+        if (index < 0 || index >= aiguillages.Length || aiguillages[index] == null)
+            return 0;
+
+        return (int)aiguillages[index].controle;
+    }
+
 
     /// <summary>
-    /// Serre les freins de tous les convois et ferme tous les signaux.
-    /// Appelable par une source qui détecte elle-même une anomalie.
+    /// Occupation des cantons, un bit par section. C'est la donnée dont un
+    /// enclenchement a besoin pour refuser une manœuvre sous circulation.
     /// </summary>
-    public void ReplierEnSecurite(string motif)
+    public int OccupationCantons()
     {
-        if (_replieEnSecurite)
-            return;
-
-        _replieEnSecurite = true;
-        dernierMotifSecurite = motif;
-
-        Debug.LogWarning($"[Poste] REPLI EN SÉCURITÉ — {motif}", this);
+        int masque = 0;
 
         for (int i = 0; i < trains.Length; i++)
         {
-            if (trains[i] != null && trains[i].physics != null)
-                trains[i].physics.FreinUrgence();
+            int canton = CantonDe(trains[i]);
 
-            if (_precedentes != null && i < _precedentes.Length)
-                _precedentes[i] = CommandeTrain.Securite;
+            if (canton >= 1 && canton <= 16)
+                masque |= 1 << (canton - 1);
         }
 
-        for (int i = 0; i < signaux.Length; i++)
+        return masque;
+    }
+
+
+    /// <summary>Alarmes : bit 0 accident, bit 1 déraillement, bit 2 automate absent.</summary>
+    public int Alarmes()
+    {
+        int masque = 0;
+
+        foreach (TrainController train in trains)
         {
-            if (signaux[i] != null)
-                signaux[i].DefinirAspect(AspectSignal.Carre);
+            if (train == null)
+                continue;
+
+            if (train.etat == TrainController.EtatTrain.Bloque ||
+                train.etat == TrainController.EtatTrain.Impact)
+                masque |= 1;
+
+            if (Deraille(train))
+                masque |= 2;
         }
 
-        // La liaison retrouvée devra tout réappliquer
-        _premiereApplication = true;
+        if (!automatePresent)
+            masque |= 4;
+
+        return masque;
     }
 
 
     // ======================================================================
-    // ESSAIS
-    // Permet de vérifier le câblage de l'inspecteur sans automate ni
-    // passerelle. Clic droit sur le composant → menu contextuel.
+    // OUTILS
     // ======================================================================
 
-    [ContextMenu("Essai — traction 50 % sur tous les convois")]
-    private void EssaiTraction()
+    private int CantonDe(TrainController train)
     {
-        SignalerVie();
+        if (train == null || train.trackSystem == null || !train.trackSystem.Pret)
+            return 0;
 
-        CommandeTrain c = new CommandeTrain
-        {
-            tractionPourMille = 500,
-            sensAvant = true,
-            vitesseLimiteKmh = 70
-        };
+        float longueur = train.trackSystem.Longueur;
 
-        for (int i = 0; i < trains.Length; i++)
-            AppliquerTrain(i, c);
+        if (longueur <= 0f)
+            return 0;
 
-        TerminerTrame();
+        int canton = Mathf.FloorToInt(train.distanceTrain / longueur * nombreCantons) + 1;
+
+        return Mathf.Clamp(canton, 1, nombreCantons);
     }
 
 
-    [ContextMenu("Essai — frein d'urgence")]
-    private void EssaiFreinUrgence()
+    private static bool Deraille(TrainController train)
     {
-        ReplierEnSecurite("essai manuel");
+        if (train == null)
+            return false;
+
+        TrainDerailmentController derail = train.GetComponent<TrainDerailmentController>();
+
+        return derail != null && derail.deraille;
     }
 }

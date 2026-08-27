@@ -27,7 +27,15 @@ public class TrainPhysicsController : MonoBehaviour
 
 
     [Header("Vitesse (m/s)")]
+    [Tooltip("Vitesse nominale du matériel. La consigne extérieure peut la " +
+             "dépasser — c'est tout l'intérêt d'un banc : une consigne " +
+             "aberrante doit produire une survitesse, pas être silencieusement " +
+             "écrêtée.")]
     public float vitesseMax = 70f;
+
+    [Tooltip("Plafond absolu, en m/s. Garde-fou contre une valeur aberrante " +
+             "qui ferait sortir le convoi de la voie en une image.")]
+    public float plafondAbsolu = 120f;
     public float vitesseDemandee = 0f;
     public float vitesseActuelle = 0f;
 
@@ -72,7 +80,7 @@ public class TrainPhysicsController : MonoBehaviour
                 break;
 
             default:
-                cible = Mathf.Clamp(vitesseDemandee, 0f, vitesseMax);
+                cible = Mathf.Clamp(vitesseDemandee, 0f, plafondAbsolu);
                 taux = acceleration;
                 break;
         }
@@ -101,6 +109,17 @@ public class TrainPhysicsController : MonoBehaviour
     public void ChangerTraction(float valeur)
     {
         vitesseDemandee = Mathf.Clamp01(valeur) * vitesseMax;
+    }
+
+
+    /// <summary>
+    /// Consigne de vitesse directe, en m/s. Peut dépasser vitesseMax : c'est
+    /// ainsi qu'une consigne aberrante venue de l'automate se traduit par une
+    /// survitesse réelle, et non par un écrêtage invisible.
+    /// </summary>
+    public void DefinirVitesseCible(float metresParSeconde)
+    {
+        vitesseDemandee = Mathf.Clamp(metresParSeconde, 0f, plafondAbsolu);
     }
 
 

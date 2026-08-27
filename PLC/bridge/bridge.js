@@ -58,33 +58,46 @@ const COIL_COUNT = 18;      // %QX0.0 .. %QX2.1
 const REG_BASE = 0;
 const REG_COUNT = 11;       // %QW0 .. %QW10
 
-// Index dans le tableau de coils
+// Voie de retour : les %MW commencent au registre de maintien 1024 dans le
+// mappage Modbus d'OpenPLC. Le programme ST ne doit QUE les lire — rien
+// n'empeche techniquement d'y ecrire, mais il ecraserait alors ces mesures.
+const MW_BASE = 1024;       // %MW0
+const MW_COUNT = 12;        // %MW0 .. %MW11
+
+// Ordres de l'automate : index dans le tableau de coils
 const C = {
-    T1_FreinService: 0,     // %QX0.0
-    T1_FreinUrgence: 1,     // %QX0.1
-    T1_SensAvant: 2,        // %QX0.2
-    T1_SensArriere: 3,      // %QX0.3
-    T2_FreinService: 4,     // %QX0.4
-    T2_FreinUrgence: 5,     // %QX0.5
-    T2_SensAvant: 6,        // %QX0.6
-    T2_SensArriere: 7,      // %QX0.7
+    T1_ArretUrgence: 0,     // %QX0.0
+    T2_ArretUrgence: 1,     // %QX0.1
+    T1_Autorisee: 2,        // %QX0.2
+    T2_Autorisee: 3,        // %QX0.3
     AIG1_Deviation: 8,      // %QX1.0
     AIG2_Deviation: 9,      // %QX1.1
     Heartbeat: 16,          // %QX2.0
-    ScenarioActif: 17,      // %QX2.1
+    SupervisionActive: 17,  // %QX2.1
 };
 
-// Index dans le tableau de holding registers
+// Ordres de l'automate : index dans le tableau de holding registers
 const R = {
-    T1_Traction: 0,         // %QW0
-    T2_Traction: 1,         // %QW1
+    T1_ConsigneVitesse: 0,  // %QW0, km/h
+    T2_ConsigneVitesse: 1,  // %QW1, km/h
     SIG1_Aspect: 2,         // %QW2
     SIG2_Aspect: 3,         // %QW3
-    T1_VitesseLimite: 4,    // %QW4
-    T2_VitesseLimite: 5,    // %QW5
-    T1_Position: 6,         // %QW6, en decimetres
-    T2_Position: 7,         // %QW7, en decimetres
-    Etape: 10,              // %QW10
+};
+
+// Mesures remontees : index dans le bloc %MW
+const M = {
+    T1_Position: 0,         // %MW0, decimetres
+    T1_Vitesse: 1,          // %MW1, km/h x10
+    T1_Etat: 2,             // %MW2
+    T1_Canton: 3,           // %MW3
+    T2_Position: 4,         // %MW4
+    T2_Vitesse: 5,          // %MW5
+    T2_Etat: 6,             // %MW6
+    T2_Canton: 7,           // %MW7
+    AIG1_Controle: 8,       // %MW8
+    AIG2_Controle: 9,       // %MW9
+    Occupation: 10,         // %MW10
+    Alarmes: 11,            // %MW11
 };
 
 // ============================================================================
@@ -101,6 +114,11 @@ let derniereErreur = "";
 // endpoint HTTP de meme origine, sans jamais parler Modbus elle-meme.
 let derniereTrame = null;
 
+// Dernieres mesures recues de la simulation, en attente d'ecriture dans les
+// %MW. Null tant qu'aucun navigateur n'a rien envoye : on n'ecrit alors rien,
+// plutot que d'ecraser les registres avec des zeros.
+let mesures = null;
+
 // Trame de repli diffusee quand l'automate est injoignable.
 // plc:false doit declencher le frein d'urgence cote Unity.
 function trameDegradee() {
@@ -109,14 +127,13 @@ function trameDegradee() {
         plc: false,
         err: derniereErreur,
         hb: false,
-        etape: 0,
-        scenario: false,
-        t1_traction: 0, t1_fs: false, t1_fu: true,
-        t1_av: false, t1_ar: false, t1_vlim: 0, t1_pos: 0,
-        t2_traction: 0, t2_fs: false, t2_fu: true,
-        t2_av: false, t2_ar: false, t2_vlim: 0, t2_pos: 0,
+        // Consigne negative et autorisation acquise : sans automate, les
+        // navettes restent sur leurs valeurs nominales et continuent de
+        // rouler. Couper la liaison ne doit pas eteindre le procede.
+        t1_vitesse: -1, t1_au: false, t1_autorise: true,
+        t2_vitesse: -1, t2_au: false, t2_autorise: true,
         aig1: false, aig2: false,
-        sig1: 0, sig2: 0,
+        sig1: 2, sig2: 2,
     };
 }
 
@@ -126,24 +143,15 @@ function construireTrame(coils, regs) {
         plc: true,
         err: "",
         hb: !!coils[C.Heartbeat],
-        etape: regs[R.Etape],
-        scenario: !!coils[C.ScenarioActif],
+        supervision: !!coils[C.SupervisionActive],
 
-        t1_traction: regs[R.T1_Traction],
-        t1_fs: !!coils[C.T1_FreinService],
-        t1_fu: !!coils[C.T1_FreinUrgence],
-        t1_av: !!coils[C.T1_SensAvant],
-        t1_ar: !!coils[C.T1_SensArriere],
-        t1_vlim: regs[R.T1_VitesseLimite],
-        t1_pos: regs[R.T1_Position],
+        t1_vitesse: regs[R.T1_ConsigneVitesse],
+        t1_au: !!coils[C.T1_ArretUrgence],
+        t1_autorise: !!coils[C.T1_Autorisee],
 
-        t2_traction: regs[R.T2_Traction],
-        t2_fs: !!coils[C.T2_FreinService],
-        t2_fu: !!coils[C.T2_FreinUrgence],
-        t2_av: !!coils[C.T2_SensAvant],
-        t2_ar: !!coils[C.T2_SensArriere],
-        t2_vlim: regs[R.T2_VitesseLimite],
-        t2_pos: regs[R.T2_Position],
+        t2_vitesse: regs[R.T2_ConsigneVitesse],
+        t2_au: !!coils[C.T2_ArretUrgence],
+        t2_autorise: !!coils[C.T2_Autorisee],
 
         aig1: !!coils[C.AIG1_Deviation],
         aig2: !!coils[C.AIG2_Deviation],
@@ -152,6 +160,41 @@ function construireTrame(coils, regs) {
         sig2: regs[R.SIG2_Aspect],
     };
 }
+
+/**
+ * Convertit les mesures recues du navigateur en bloc de registres %MW.
+ *
+ * Les registres Modbus sont des entiers 16 bits non signes : toute valeur est
+ * ramenee dans 0..65535, faute de quoi la bibliotheque leve une erreur et la
+ * boucle de scrutation tombe.
+ */
+function construireMesures(m) {
+    const bloc = new Array(MW_COUNT).fill(0);
+
+    const borne = (v) => {
+        const n = Math.round(Number(v) || 0);
+        return n < 0 ? 0 : (n > 65535 ? 65535 : n);
+    };
+
+    bloc[M.T1_Position] = borne(m.t1_pos);
+    bloc[M.T1_Vitesse] = borne(m.t1_vit);
+    bloc[M.T1_Etat] = borne(m.t1_etat);
+    bloc[M.T1_Canton] = borne(m.t1_canton);
+
+    bloc[M.T2_Position] = borne(m.t2_pos);
+    bloc[M.T2_Vitesse] = borne(m.t2_vit);
+    bloc[M.T2_Etat] = borne(m.t2_etat);
+    bloc[M.T2_Canton] = borne(m.t2_canton);
+
+    bloc[M.AIG1_Controle] = borne(m.aig1_ctrl);
+    bloc[M.AIG2_Controle] = borne(m.aig2_ctrl);
+
+    bloc[M.Occupation] = borne(m.occupation);
+    bloc[M.Alarmes] = borne(m.alarmes);
+
+    return bloc;
+}
+
 
 // ============================================================================
 // SERVEUR HTTP  (build WebGL)
@@ -255,6 +298,19 @@ wss.on("connection", (ws, req) => {
     clients++;
     console.log(`[ws] client connecte (${clients}) depuis ${req.socket.remoteAddress}`);
 
+    ws.on("message", (donnees) => {
+        try {
+            const m = JSON.parse(donnees.toString());
+
+            // Un seul navigateur fait autorite sur les mesures : le dernier a
+            // avoir parle. Plusieurs onglets ouverts se disputeraient sinon
+            // les registres, chacun ecrivant sa propre position.
+            mesures = m;
+        } catch (e) {
+            console.error("[ws] trame illisible :", e.message);
+        }
+    });
+
     ws.on("close", () => {
         clients--;
         console.log(`[ws] client deconnecte (${clients})`);
@@ -304,6 +360,13 @@ async function boucle() {
 
             diffuser(construireTrame(coils.data, regs.data));
 
+            // Voie de retour : les mesures de la simulation partent dans les
+            // %MW. Ecriture apres lecture, pour que la trame diffusee reflete
+            // l'etat de l'automate au moment ou il a ete interroge.
+            if (mesures) {
+                await client.writeRegisters(MW_BASE, construireMesures(mesures));
+            }
+
         } catch (e) {
             if (plcConnecte || derniereErreur !== e.message) {
                 console.error("[modbus] erreur :", e.message);
@@ -334,6 +397,7 @@ serveur.listen(CFG.httpPort, () => {
     console.log(`  OpenPLC   : modbus tcp ${CFG.plcHost}:${CFG.plcPort}`);
     console.log(`  WebSocket : ws://localhost:${CFG.httpPort}`);
     console.log(`  Donnees   : http://localhost:${CFG.httpPort}/data`);
+    console.log(`  Retour    : %MW0..%MW11 (registres ${MW_BASE}..${MW_BASE + MW_COUNT - 1})`);
     console.log(`  Build     : http://localhost:${CFG.httpPort}  (${CFG.webglDir})`);
     console.log(`  Scrutation: ${CFG.pollMs} ms`);
     console.log("========================================================");

@@ -1,7 +1,15 @@
 # Liaison OpenPLC → Simulation Unity
 
-L'automate est la **source** : il produit les ordres, la simulation les applique.
-Unity est **client (maître) Modbus TCP**, OpenPLC est **serveur (esclave)** sur le port **502**.
+**La simulation détient le procédé, l'automate le supervise.** Les navettes
+roulent seules ; OpenPLC observe leur état et dispose de trois leviers —
+consigne de vitesse, arrêt d'urgence, position d'aiguille.
+
+La boucle est **fermée** : la passerelle lit les ordres dans les `%QX`/`%QW` et
+écrit les mesures dans les `%MW`. Elle reste cliente Modbus TCP ; OpenPLC est
+serveur sur le port **502**.
+
+Couper l'automate n'arrête pas l'installation : la simulation retombe sur ses
+valeurs nominales et poursuit.
 
 Programme : `simulation_ferroviaire.st`
 
@@ -85,6 +93,37 @@ simple de tester la réaction de la simulation sans écrire une ligne de code.
 **Appliquez les freins sur front, pas sur niveau.** Appeler `FreinService()` à chaque
 cycle recharge l'état à chaque image ; ce n'est pas faux aujourd'hui, mais ça le
 deviendra dès que le freinage aura une dynamique propre.
+
+---
+
+## Voie de retour : les `%MW`
+
+Les `%MW` d'OpenPLC sont mappés sur les **registres de maintien 1024 et
+suivants**. La passerelle y écrit après chaque lecture.
+
+| IEC | Modbus | Contenu |
+|---|---:|---|
+| `%MW0` | 1024 | position T1, décimètres |
+| `%MW1` | 1025 | vitesse réelle T1, km/h × 10 |
+| `%MW2` | 1026 | état T1 — 0 en ligne, 1 à quai, 2 accidenté, 3 déraillé |
+| `%MW3` | 1027 | canton occupé par T1 |
+| `%MW4` | 1028 | position T2 |
+| `%MW5` | 1029 | vitesse réelle T2 |
+| `%MW6` | 1030 | état T2 |
+| `%MW7` | 1031 | canton occupé par T2 |
+| `%MW8` | 1032 | **contrôle** AIG1 — 0 principale, 1 déviation, 2 en manœuvre |
+| `%MW9` | 1033 | contrôle AIG2 |
+| `%MW10` | 1034 | occupation des cantons, un bit par section |
+| `%MW11` | 1035 | alarmes — 1 accident, 2 déraillement, 4 automate absent |
+
+**Règle absolue : le programme ST ne fait que LIRE les `%MW`.** Ces registres
+sont techniquement inscriptibles des deux côtés ; y écrire depuis le `.st`
+écraserait les mesures que la passerelle vient d'y déposer. Rien ne l'empêche,
+c'est une convention à tenir.
+
+Le **contrôle d'aiguille** (`%MW8`, `%MW9`) est la mesure la plus précieuse :
+c'est la position *réelle* des lames, pas celle commandée. Un enclenchement
+digne de ce nom n'autorise aucun mouvement sans elle.
 
 ---
 

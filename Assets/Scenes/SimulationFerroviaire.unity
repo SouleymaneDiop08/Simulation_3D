@@ -3812,6 +3812,7 @@ GameObject:
   - component: {fileID: 1049974604}
   - component: {fileID: 1049974606}
   - component: {fileID: 1049974607}
+  - component: {fileID: 963194310}
   m_Layer: 0
   m_Name: TrainController
   m_TagString: Untagged
@@ -9784,6 +9785,7 @@ GameObject:
   - component: {fileID: 1535455435}
   - component: {fileID: 1535455436}
   - component: {fileID: 1535455437}
+  - component: {fileID: 963194311}
   m_Layer: 0
   m_Name: TrainController
   m_TagString: Untagged
@@ -15929,11 +15931,11 @@ MonoBehaviour:
   - {fileID: 977162723}
   - {fileID: 1305464763}
   signaux: []
-  delaiSansOrdre: 2
-  liaisonActive: 0
+  nombreCantons: 8
+  delaiSansOrdre: 3
+  automatePresent: 0
   sourceCommande: 
   secondesDepuisDernierOrdre: 0
-  dernierMotifSecurite: 
 --- !u!114 &963194302
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -15947,10 +15949,59 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   urlPasserelle: 
-  delaiChienDeGarde: 2
-  delaiReconnexion: 3
   cheminWebSocket: /ws
+  delaiReconnexion: 3
+  periodeEmission: 0.1
   poste: {fileID: 963194301}
   connecte: 0
-  etapeCourante: 0
   derniereErreur: 
+--- !u!114 &963194310
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1049974603}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d018acf205ce432082710725b15aec5f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  train: {fileID: 1049974604}
+  vitesseNominaleKmh: 90
+  vitesseApprocheKmh: 30
+  distanceApproche: 70
+  distanceArret: 15
+  retardDepart: 2
+  tempsPreparation: 4
+  tempsStationnement: 15
+  consigneVitesseKmh: -1
+  arretUrgence: 0
+  autorisee: 1
+  phase: 0
+  versButeeHaute: 1
+--- !u!114 &963194311
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1535455433}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d018acf205ce432082710725b15aec5f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  train: {fileID: 1535455435}
+  vitesseNominaleKmh: 90
+  vitesseApprocheKmh: 30
+  distanceApproche: 70
+  distanceArret: 15
+  retardDepart: 45
+  tempsPreparation: 4
+  tempsStationnement: 15
+  consigneVitesseKmh: -1
+  arretUrgence: 0
+  autorisee: 1
+  phase: 0
+  versButeeHaute: 1

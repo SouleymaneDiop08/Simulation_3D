@@ -2,70 +2,46 @@ using System;
 
 
 /// <summary>
-/// Jeu d'ordres destiné à un convoi, tel que l'automate l'émet.
+/// Leviers dont l'automate dispose sur un convoi.
 ///
-/// Les unités sont celles du programme ST — échelles métier, non normalisées :
-/// la traction en pour mille, la vitesse limite en km/h. La conversion vers les
-/// unités internes de la simulation (m/s) est faite par PosteDeCommande, en un
-/// seul endroit.
+/// Volontairement pauvre : la navette conduit seule. L'automate ne pousse pas
+/// le train, il agit sur trois choses seulement — jusqu'où il peut aller vite,
+/// s'il a le droit de rouler, et s'il doit s'arrêter immédiatement.
+///
+/// C'est ce qui fait la valeur du banc : peu de leviers, mais chacun aux
+/// conséquences physiques réelles.
 /// </summary>
 [Serializable]
 public struct CommandeTrain
 {
-    /// <summary>Consigne de traction, de 0 à 1000 pour mille.</summary>
-    public int tractionPourMille;
-
-    public bool freinService;
-    public bool freinUrgence;
-
-    public bool sensAvant;
-    public bool sensArriere;
-
-    /// <summary>Vitesse maximale autorisée, en km/h.</summary>
-    public int vitesseLimiteKmh;
-
     /// <summary>
-    /// Position du convoi sur la voie, en décimètres, telle que l'automate
-    /// la calcule. Négative si l'automate ne la fournit pas.
+    /// Vitesse visée en ligne, en km/h. Négative si l'automate n'en impose
+    /// pas — la navette retombe alors sur sa valeur nominale.
+    ///
+    /// Elle n'est PAS écrêtée à la vitesse nominale du matériel : une consigne
+    /// aberrante doit produire une survitesse observable, pas disparaître
+    /// silencieusement.
     /// </summary>
-    public int positionDecimetres;
+    public int consigneVitesseKmh;
+
+    /// <summary>Freinage immédiat et immobilisation.</summary>
+    public bool arretUrgence;
+
+    /// <summary>Autorisation de circuler. À faux, le convoi reste à quai.</summary>
+    public bool autorisee;
 
 
     /// <summary>
-    /// Ordre de repli : traction nulle, frein d'urgence serré, aucun sens
-    /// engagé. C'est l'état appliqué tant qu'aucune source de commande ne
-    /// s'est manifestée, et celui vers lequel on retombe si la liaison tombe.
+    /// Ordre de repli, appliqué tant qu'aucune source ne s'est manifestée.
+    ///
+    /// La consigne négative laisse la navette sur ses valeurs nominales, et
+    /// l'autorisation reste acquise : sans automate, le procédé continue de
+    /// tourner. Couper la liaison perturbe la supervision, pas l'installation.
     /// </summary>
-    public static CommandeTrain Securite => new CommandeTrain
+    public static CommandeTrain Nominale => new CommandeTrain
     {
-        tractionPourMille = 0,
-        freinService = false,
-        freinUrgence = true,
-        sensAvant = false,
-        sensArriere = false,
-        vitesseLimiteKmh = 0,
-        positionDecimetres = -1
+        consigneVitesseKmh = -1,
+        arretUrgence = false,
+        autorisee = true
     };
-
-
-    /// <summary>Position en mètres, ou -1 si l'automate ne la fournit pas.</summary>
-    public float PositionMetres =>
-        positionDecimetres < 0 ? -1f : positionDecimetres / 10f;
-
-
-    /// <summary>Traction effective, de 0 à 1, une fois les freins pris en compte.</summary>
-    public float TractionEffective
-    {
-        get
-        {
-            if (freinUrgence || freinService)
-                return 0f;
-
-            // Sans sens engagé, la traction n'a pas de sens physique
-            if (sensAvant == sensArriere)
-                return 0f;
-
-            return UnityEngine.Mathf.Clamp01(tractionPourMille / 1000f);
-        }
-    }
 }
