@@ -181,8 +181,11 @@ const serveur = http.createServer((req, res) => {
     // Empeche toute remontee hors du dossier servi
     const fichier = path.join(CFG.webglDir, path.normalize(rel).replace(/^(\.\.[/\\])+/, ""));
 
-    fs.readFile(fichier, (err, data) => {
-        if (err) {
+    // Diffusion en flux, et non en memoire. readFile chargeait le fichier
+    // entier avant de repondre : 37 Mo de RAM par requete sur le .wasm
+    // d'Unity, et autant de fois qu'il y a de visiteurs.
+    fs.stat(fichier, (err, infos) => {
+        if (err || !infos.isFile()) {
             res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
             res.end(
                 "404 - build WebGL introuvable.\n\n" +
@@ -206,8 +209,34 @@ const serveur = http.createServer((req, res) => {
         }
 
         entetes["Content-Type"] = MIME[ext] || "application/octet-stream";
+        entetes["Content-Length"] = infos.size;
+
+        // Requetes partielles : le chargeur Unity y recourt sur les gros
+        // fichiers, et un navigateur qui reprend un telechargement aussi.
+        const plage = req.headers.range;
+
+        if (plage) {
+            const m = /bytes=(\d*)-(\d*)/.exec(plage);
+
+            if (m) {
+                const debut = m[1] ? parseInt(m[1], 10) : 0;
+                const fin = m[2] ? parseInt(m[2], 10) : infos.size - 1;
+
+                if (debut <= fin && fin < infos.size) {
+                    entetes["Content-Length"] = fin - debut + 1;
+                    entetes["Content-Range"] = `bytes ${debut}-${fin}/${infos.size}`;
+                    entetes["Accept-Ranges"] = "bytes";
+
+                    res.writeHead(206, entetes);
+                    fs.createReadStream(fichier, { start: debut, end: fin }).pipe(res);
+                    return;
+                }
+            }
+        }
+
+        entetes["Accept-Ranges"] = "bytes";
         res.writeHead(200, entetes);
-        res.end(data);
+        fs.createReadStream(fichier).pipe(res);
     });
 });
 
