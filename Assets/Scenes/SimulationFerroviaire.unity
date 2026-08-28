@@ -3846,8 +3846,8 @@ MonoBehaviour:
   zonesVitesseActives: []
   vitesseAutorisee: 999
   distanceTrain: 0
-  distanceEntreWagons: 31.4
-  margeQuai: 25
+  distanceEntreWagons: 15.4
+  margeQuai: 2
   voiePrincipale: {fileID: 276859546}
   voieDeviation: {fileID: 289173534}
 --- !u!4 &1049974605
@@ -9834,8 +9834,8 @@ MonoBehaviour:
   zonesVitesseActives: []
   vitesseAutorisee: 999
   distanceTrain: 0
-  distanceEntreWagons: 31.4
-  margeQuai: 25
+  distanceEntreWagons: 15.4
+  margeQuai: 2
   voiePrincipale: {fileID: 267263528}
   voieDeviation: {fileID: 73770720}
 --- !u!114 &1535455436
