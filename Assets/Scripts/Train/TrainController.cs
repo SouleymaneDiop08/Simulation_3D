@@ -121,6 +121,11 @@ public class TrainController : MonoBehaviour
     // deux voies n'ont ni la même origine ni le même paramétrage.
     private float[] _distances;
 
+    // Signe de progression de chaque caisse, relatif à celui de la tête.
+    // Vaut -1 pour les caisses restées sur une voie parcourue en sens opposé,
+    // le temps qu'elles franchissent l'appareil.
+    private int[] _signes;
+
     // Voie quittée et point de bascule, le temps que tout le convoi franchisse
     // l'appareil. Null dès que la dernière caisse est passée.
     private TrackSystem _voieQuittee;
@@ -154,10 +159,12 @@ public class TrainController : MonoBehaviour
     private void RepartirWagons()
     {
         _distances = new float[wagons.Length];
+        _signes = new int[wagons.Length];
 
         for (int i = 0; i < wagons.Length; i++)
         {
             _distances[i] = distanceTrain - i * distanceEntreWagons;
+            _signes[i] = 1;
 
             if (wagons[i] != null)
                 wagons[i].SetTrack(trackSystem);
@@ -282,7 +289,7 @@ public class TrainController : MonoBehaviour
             RepartirWagons();
 
         for (int i = 0; i < _distances.Length; i++)
-            _distances[i] += pas;
+            _distances[i] += pas * _signes[i];
 
         FranchirAiguille(pas);
     }
@@ -328,6 +335,7 @@ public class TrainController : MonoBehaviour
             // caisse sauterait, les deux voies n'ayant pas le même origine.
             Vector3 ou = _voieQuittee.GetPosition(_distances[i]);
             _distances[i] = trackSystem.ProjeterDistance(ou);
+            _signes[i] = 1;
             wagon.SetTrack(trackSystem);
         }
 
@@ -501,17 +509,40 @@ public class TrainController : MonoBehaviour
         // changement. Chaque caisse y passera à son tour.
         Vector3 pointBascule = ancienne.GetPosition(distanceTrain);
 
+        Vector3 sensAncien = ancienne.GetDirection(distanceTrain);
+
         _voieQuittee = ancienne;
         _distanceAiguille = distanceTrain;
 
         trackSystem = nouvelleVoie;
         distanceTrain = nouvelleVoie.ProjeterDistance(pointBascule);
 
+        // Une traversée unique est parcourue dans un sens par un convoi et
+        // dans l'autre par celui d'en face. Si le nouveau tracé s'oppose à
+        // l'ancien, on inverse le sens de marche : le convoi continue alors
+        // dans la même direction du monde, sa distance progressant à l'envers
+        // sur la nouvelle voie.
+        Vector3 sensNouveau = nouvelleVoie.GetDirection(distanceTrain);
+
+        if (Vector3.Dot(sensAncien, sensNouveau) < 0f)
+        {
+            InverserSens();
+
+            // Les caisses encore en arrière restent sur l'ancienne voie, où
+            // le sens n'a pas changé : leur progression doit donc s'inverser
+            // par rapport à celle de la tête.
+            for (int i = 0; i < _signes.Length; i++)
+                _signes[i] = -1;
+
+            Debug.Log($"[Train] {name} : tracé opposé, sens de marche inversé.", this);
+        }
+
         // La tête seule change de voie ; son écart avec les caisses restées
         // en arrière est conservé sur leur propre voie.
         if (wagons != null && wagons.Length > 0 && wagons[0] != null)
         {
             _distances[0] = distanceTrain;
+            _signes[0] = 1;
             wagons[0].SetTrack(nouvelleVoie);
         }
 
@@ -523,6 +554,16 @@ public class TrainController : MonoBehaviour
     // ==========================================================
     // SENS
     // ==========================================================
+
+    /// <summary>Permute avant et arrière, en laissant le point mort inchangé.</summary>
+    private void InverserSens()
+    {
+        if (sens == SensTrain.Avant)
+            sens = SensTrain.Arriere;
+        else if (sens == SensTrain.Arriere)
+            sens = SensTrain.Avant;
+    }
+
 
     public void MettreAvant()
     {

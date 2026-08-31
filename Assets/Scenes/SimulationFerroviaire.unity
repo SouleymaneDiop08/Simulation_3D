@@ -681,158 +681,6 @@ MonoBehaviour:
   forceImpact: 15
   dureeImpact: 0.4
   explosionPrefab: {fileID: 5162910912013668194, guid: cf82839c411151342a7b2337bda9fb34, type: 3}
---- !u!1 &83295902
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 83295903}
-  - component: {fileID: 83295904}
-  m_Layer: 0
-  m_Name: SplineContainer1 (1)
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &83295903
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 83295902}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 18.87, y: 0, z: 143.04999}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 289173533}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &83295904
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 83295902}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: dab5c7d4c32e743048dfca98e2d5914f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.Splines::UnityEngine.Splines.SplineContainer
-  m_Spline:
-    m_EditModeType: 1
-    m_Knots: []
-    m_MetaData: []
-    m_Closed: 0
-    m_IntData:
-      m_Data: []
-    m_FloatData:
-      m_Data: []
-    m_Float4Data:
-      m_Data: []
-    m_ObjectData:
-      m_Data: []
-  m_Splines:
-  - m_EditModeType: 1
-    m_Knots:
-    - Position:
-        x: 0
-        y: 0
-        z: 1859
-      TangentIn:
-        x: 0
-        y: 0
-        z: 100
-      TangentOut:
-        x: 0
-        y: 0
-        z: -100
-      Rotation:
-        value:
-          x: 0
-          y: 0
-          z: 0
-          w: 1
-    - Position:
-        x: 0
-        y: 0
-        z: 935
-      TangentIn:
-        x: 0
-        y: 0
-        z: 100
-      TangentOut:
-        x: 0
-        y: 0
-        z: -40.0
-      Rotation:
-        value:
-          x: 0
-          y: 0
-          z: 0
-          w: 1
-    - Position:
-        x: -12.0
-        y: 0
-        z: 815.0
-      TangentIn:
-        x: 0
-        y: 0
-        z: 40.0
-      TangentOut:
-        x: 0
-        y: 0
-        z: -100
-      Rotation:
-        value:
-          x: 0
-          y: 0
-          z: 0
-          w: 1
-    - Position:
-        x: -12.0
-        y: 0
-        z: 0
-      TangentIn:
-        x: 0
-        y: 0
-        z: 100
-      TangentOut:
-        x: 0
-        y: 0
-        z: -100
-      Rotation:
-        value:
-          x: 0
-          y: 0
-          z: 0
-          w: 1
-    m_MetaData:
-    - Mode: 0
-      Tension: 0.5
-    - Mode: 0
-      Tension: 0.5
-    - Mode: 0
-      Tension: 0.5
-    - Mode: 0
-      Tension: 0.5
-    m_Closed: 0
-    m_IntData:
-      m_Data: []
-    m_FloatData:
-      m_Data: []
-    m_Float4Data:
-      m_Data: []
-    m_ObjectData:
-      m_Data: []
-  m_Knots:
-    m_KnotsLink: []
 --- !u!1 &116407169
 GameObject:
   m_ObjectHideFlags: 0
@@ -1402,54 +1250,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 6084495597062304751, guid: cf82839c411151342a7b2337bda9fb34, type: 3}
   m_PrefabInstance: {fileID: 281216019}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &289173532
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 289173533}
-  - component: {fileID: 289173534}
-  - component: {fileID: 963194323}
-  m_Layer: 0
-  m_Name: TrackDeviation (1)
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &289173533
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 289173532}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 83295903}
-  m_Father: {fileID: 1414312733}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &289173534
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 289173532}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c7fe9aac6ee41c74392790ccf7014250, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TrackSystem
-  splineContainer: {fileID: 83295904}
-  longueur: 4000
 --- !u!1 &290677396
 GameObject:
   m_ObjectHideFlags: 0
@@ -3505,7 +3305,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AiguillageController
   voiePrincipale: {fileID: 276859546}
-  voieDeviation: {fileID: 289173534}
+  voieDeviation: {fileID: 73770720}
 --- !u!4 &977162725
 Transform:
   m_ObjectHideFlags: 0
@@ -3857,7 +3657,7 @@ MonoBehaviour:
   distanceEntreWagons: 15.4
   margeQuai: 49
   voiePrincipale: {fileID: 276859546}
-  voieDeviation: {fileID: 289173534}
+  voieDeviation: {fileID: 0}
 --- !u!4 &1049974605
 Transform:
   m_ObjectHideFlags: 0
@@ -4660,7 +4460,6 @@ Transform:
   m_Children:
   - {fileID: 267263527}
   - {fileID: 73770719}
-  - {fileID: 289173533}
   - {fileID: 276859545}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -16102,38 +15901,6 @@ MonoBehaviour:
   epaisseurBallast: 0.3
   distanceDebut: 0
   distanceFin: -1
-  pasEchantillon: 4
-  materiauRail: {fileID: 0}
-  materiauTraverse: {fileID: 0}
-  materiauBallast: {fileID: 0}
-  couleurRail: {r: 0.42, g: 0.42, b: 0.45, a: 1}
-  couleurTraverse: {r: 0.3, g: 0.26, b: 0.22, a: 1}
-  couleurBallast: {r: 0.38, g: 0.36, b: 0.34, a: 1}
---- !u!114 &963194323
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 289173532}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 855d21015eb440ab86a53794c4605f66, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  ecartement: 3
-  largeurRail: 0.35
-  hauteurRail: 0.35
-  genererTraverses: 1
-  espacementTraverses: 3
-  largeurTraverse: 1.2
-  epaisseurTraverse: 0.25
-  debordTraverse: 0.9
-  genererBallast: 0
-  largeurBallast: 4
-  epaisseurBallast: 0.3
-  distanceDebut: 880
-  distanceFin: 1090
   pasEchantillon: 4
   materiauRail: {fileID: 0}
   materiauTraverse: {fileID: 0}
