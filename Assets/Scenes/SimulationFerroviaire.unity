@@ -2114,7 +2114,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 85f286a4d9fcf1647bc29b2801711469, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DerailmentZone
-  vitesseDeraillement: 80
+  vitesseDeraillement: 200
 --- !u!65 &609474928
 BoxCollider:
   m_ObjectHideFlags: 0
