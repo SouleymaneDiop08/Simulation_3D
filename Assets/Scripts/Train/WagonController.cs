@@ -73,8 +73,16 @@ public class WagonController : MonoBehaviour
 
     /// <summary>
     /// Place le wagon à la distance donnée sur sa voie.
+    ///
+    /// L'orientation vaut +1 quand la caisse regarde dans le sens croissant du
+    /// tracé, -1 dans l'autre. Elle est nécessaire parce qu'une traversée
+    /// unique est parcourue à l'envers par le convoi d'en face : sans elle,
+    /// tout le train pivotait d'un demi-tour à l'instant du franchissement.
+    ///
+    /// Elle est distincte du sens de marche : un convoi qui rebrousse chemin
+    /// en gare recule, il ne se retourne pas.
     /// </summary>
-    public void Move(float distanceSurVoie)
+    public void Move(float distanceSurVoie, int orientation = 1)
     {
         if (trackSystem == null || !trackSystem.Pret)
             return;
@@ -83,6 +91,9 @@ public class WagonController : MonoBehaviour
 
         Vector3 position = trackSystem.GetPosition(distanceSurVoie);
         Vector3 direction = trackSystem.GetDirection(distanceSurVoie);
+
+        if (orientation < 0)
+            direction = -direction;
 
         Quaternion rotationVoie = direction.sqrMagnitude > 1e-6f
             ? Quaternion.LookRotation(direction, Vector3.up)

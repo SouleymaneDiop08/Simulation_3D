@@ -116,20 +116,48 @@ public class TrainController : MonoBehaviour
 
     private TrackSystem prochaineVoie;
 
-    // Chaque wagon porte SA distance sur SA voie. Une seule distance partagée
-    // ne permettrait pas de franchir une aiguille caisse par caisse : les
-    // deux voies n'ont ni la même origine ni le même paramétrage.
-    private float[] _distances;
+    // ==========================================================
+    // PLACEMENT DES CAISSES
+    //
+    // La position de chaque caisse est DÉDUITE de celle de la tête, en
+    // remontant de son recul le long du chemin parcouru — jamais accumulée
+    // image par image. Une distance propre à chaque caisse, avancée pas à pas,
+    // dérivait au moindre changement de voie et ne savait pas revenir en
+    // arrière : le convoi basculait alors d'un bloc au lieu de s'engager
+    // caisse par caisse.
+    // ==========================================================
 
-    // Signe de progression de chaque caisse, relatif à celui de la tête.
-    // Vaut -1 pour les caisses restées sur une voie parcourue en sens opposé,
-    // le temps qu'elles franchissent l'appareil.
-    private int[] _signes;
-
-    // Voie quittée et point de bascule, le temps que tout le convoi franchisse
-    // l'appareil. Null dès que la dernière caisse est passée.
+    // Voie quittée, le temps que tout le convoi franchisse l'appareil.
+    // Null dès que la dernière caisse est passée.
     private TrackSystem _voieQuittee;
-    private float _distanceAiguille;
+
+    // Point de bascule, exprimé sur chacune des deux voies : les deux tracés
+    // n'ont ni la même origine ni le même paramétrage.
+    private float _distanceAiguille;        // sur la voie quittée
+    private float _distanceAiguilleNeuve;   // sur la voie courante
+
+    // +1 si les deux tracés sont parcourus dans le même sens au point de
+    // bascule, -1 s'ils s'opposent. Sert à convertir un recul exprimé sur la
+    // voie courante en distance sur la voie quittée.
+    private int _signeAncienne = 1;
+
+    // Orientation de la caisse par rapport au sens croissant du tracé. Se
+    // retourne en passant sur une voie opposée, jamais lors d'un simple
+    // changement de sens de marche : un convoi qui rebrousse chemin recule,
+    // il ne pivote pas.
+    private int _orientation = 1;
+
+    // Sens de marche au moment où le convoi s'est engagé sur l'appareil, et
+    // recul de l'extrémité engagée derrière le repère de tête (0 si c'est la
+    // tête qui mène, la longueur du convoi si c'est la queue). Tous deux sont
+    // FIGÉS pour la durée du franchissement : c'est toujours la même extrémité
+    // qui entre sur la nouvelle voie, même si la marche s'inverse entre-temps.
+    private int _sensEngagement = 1;
+    private float _reculEngagement = 0f;
+
+    // Sens de marche courant, mémorisé quand il est franc. Sert à savoir quelle
+    // extrémité du convoi mène, donc laquelle s'engage sur l'appareil.
+    private int _marche = 1;
 
     // Résolue une fois : l'inversion de sens doit lui être répercutée.
     private NavetteController _navette;
@@ -163,19 +191,85 @@ public class TrainController : MonoBehaviour
     /// <summary>Aligne toutes les caisses derrière la tête, sur la voie courante.</summary>
     private void RepartirWagons()
     {
-        _distances = new float[wagons.Length];
-        _signes = new int[wagons.Length];
+        _voieQuittee = null;
 
         for (int i = 0; i < wagons.Length; i++)
         {
-            _distances[i] = distanceTrain - i * distanceEntreWagons;
-            _signes[i] = 1;
-
             if (wagons[i] != null)
                 wagons[i].SetTrack(trackSystem);
         }
+    }
 
-        _voieQuittee = null;
+
+    /// <summary>
+    /// Où se trouve la caisse d'indice i : sur quelle voie, à quelle distance,
+    /// et dans quelle orientation.
+    ///
+    /// Le raisonnement se fait en une seule grandeur : le recul de la caisse
+    /// derrière la tête. Tant que ce recul est inférieur au chemin parcouru
+    /// depuis l'appareil, la caisse est sur la voie courante. Au-delà, elle
+    /// est encore sur la voie quittée, du surplus exact.
+    ///
+    /// Rien n'est accumulé : le convoi ne peut donc ni dériver, ni se
+    /// disloquer, et il revient de lui-même sur ses pas si la marche
+    /// s'inverse au milieu d'un franchissement.
+    /// </summary>
+    /// <summary>
+    /// Place de la caisse i dans le convoi, comptée depuis l'extrémité de plus
+    /// grande distance. Le convoi occupe toujours [distanceTrain -
+    /// LongueurConvoi ; distanceTrain] : c'est ce qui permet aux butées de
+    /// quai de garantir que TOUTES les caisses restent sur la voie.
+    ///
+    /// L'ordre s'inverse en passant sur un tracé opposé — la caisse de tête
+    /// se retrouve du côté des petites distances — exactement comme
+    /// l'orientation. C'est la même bascule, elle est donc lue au même endroit.
+    /// </summary>
+    private float PlaceDansConvoi(int i)
+    {
+        float depuisTete = i * distanceEntreWagons;
+
+        return _orientation > 0 ? depuisTete : LongueurConvoi - depuisTete;
+    }
+
+
+    private void SituerCaisse(int i, out TrackSystem voie, out float distance, out int orientation)
+    {
+        // Le convoi occupe toujours [distanceTrain - LongueurConvoi ;
+        // distanceTrain] sur son tracé. Cet ordre ne dépend PAS du sens de
+        // marche : un train qui rebrousse chemin recule, ses caisses ne
+        // changent pas de côté. C'est aussi ce qui garantit que les butées de
+        // quai suffisent à maintenir tout le convoi sur la voie.
+        float place = PlaceDansConvoi(i);
+        float surVoie = distanceTrain - place;
+
+        if (_voieQuittee == null || !_voieQuittee.Pret)
+        {
+            voie = trackSystem;
+            distance = surVoie;
+            orientation = _orientation;
+            return;
+        }
+
+        // Chemin parcouru par l'extrémité engagée depuis l'appareil.
+        float parcouru =
+            (distanceTrain - _reculEngagement - _distanceAiguilleNeuve) * _sensEngagement;
+
+        // Recul de cette caisse derrière l'extrémité engagée.
+        float recul = Mathf.Abs(place - _reculEngagement);
+
+        if (recul <= parcouru)
+        {
+            voie = trackSystem;
+            distance = surVoie;
+            orientation = _orientation;
+            return;
+        }
+
+        // La caisse n'a pas encore atteint l'appareil : elle est en arrière du
+        // point de bascule, du surplus exact, sur la voie quittée.
+        voie = _voieQuittee;
+        distance = _distanceAiguille - _sensEngagement * _signeAncienne * (recul - parcouru);
+        orientation = _orientation * _signeAncienne;
     }
 
 
@@ -290,64 +384,41 @@ public class TrainController : MonoBehaviour
     {
         distanceTrain += pas;
 
-        if (_distances == null || _distances.Length != wagons.Length)
-            RepartirWagons();
+        if (pas > 0f) _marche = 1;
+        else if (pas < 0f) _marche = -1;
 
-        for (int i = 0; i < _distances.Length; i++)
-            _distances[i] += pas * _signes[i];
-
-        FranchirAiguille(pas);
+        FranchirAiguille();
     }
 
 
     /// <summary>
-    /// Bascule sur la nouvelle voie les caisses qui viennent d'atteindre
-    /// l'aiguille — et elles seules.
+    /// Clôt le franchissement dès que la dernière caisse a dépassé l'appareil.
     ///
-    /// Un train ne saute pas d'une voie à l'autre : ses caisses franchissent
-    /// l'appareil l'une après l'autre, et le convoi reste à cheval sur les
-    /// deux voies le temps du passage. Basculer tout le monde d'un coup, comme
-    /// le faisait AppliquerVoie, déplaçait latéralement des caisses encore à
-    /// plusieurs dizaines de mètres en amont.
+    /// Rien n'est à basculer ici : SituerCaisse place déjà chaque caisse sur
+    /// la voie qui lui revient, selon son recul. Il ne reste qu'à libérer la
+    /// voie quittée quand plus personne ne s'y trouve — et à la conserver tant
+    /// qu'une caisse y est encore, y compris si le convoi rebrousse chemin au
+    /// milieu de l'appareil.
     /// </summary>
-    private void FranchirAiguille(float pas)
+    private void FranchirAiguille()
     {
         if (_voieQuittee == null || trackSystem == null || !trackSystem.Pret)
             return;
 
-        bool versAvant = pas >= 0f;
-        bool resteEnArriere = false;
+        float parcouru =
+            (distanceTrain - _reculEngagement - _distanceAiguilleNeuve) * _sensEngagement;
 
-        for (int i = 0; i < wagons.Length; i++)
+        if (parcouru < LongueurConvoi)
+            return;
+
+        Debug.Log($"[Train] {name} : convoi entièrement passé sur {trackSystem.name}.", this);
+
+        _voieQuittee = null;
+
+        foreach (WagonController wagon in wagons)
         {
-            WagonController wagon = wagons[i];
-
-            if (wagon == null || wagon.trackSystem != _voieQuittee)
-                continue;
-
-            // La caisse a-t-elle atteint le point de bascule ?
-            bool atteint = versAvant
-                ? _distances[i] >= _distanceAiguille
-                : _distances[i] <= _distanceAiguille;
-
-            if (!atteint)
-            {
-                resteEnArriere = true;
-                continue;
-            }
-
-            // Reprojection au point exact où elle se trouve : sans cela la
-            // caisse sauterait, les deux voies n'ayant pas le même origine.
-            Vector3 ou = _voieQuittee.GetPosition(_distances[i]);
-            _distances[i] = trackSystem.ProjeterDistance(ou);
-            _signes[i] = 1;
-            wagon.SetTrack(trackSystem);
-        }
-
-        if (!resteEnArriere)
-        {
-            Debug.Log($"[Train] {name} : convoi entièrement passé sur {trackSystem.name}.", this);
-            _voieQuittee = null;
+            if (wagon != null)
+                wagon.SetTrack(trackSystem);
         }
     }
 
@@ -357,13 +428,18 @@ public class TrainController : MonoBehaviour
         if (wagons == null)
             return;
 
-        if (_distances == null || _distances.Length != wagons.Length)
-            RepartirWagons();
-
         for (int i = 0; i < wagons.Length; i++)
         {
-            if (wagons[i] != null)
-                wagons[i].Move(_distances[i]);
+            if (wagons[i] == null)
+                continue;
+
+            SituerCaisse(i, out TrackSystem voie, out float distance, out int orientation);
+
+            if (voie == null || !voie.Pret)
+                continue;
+
+            wagons[i].SetTrack(voie);
+            wagons[i].Move(distance, orientation);
         }
     }
 
@@ -510,49 +586,53 @@ public class TrainController : MonoBehaviour
         if (_voieQuittee != null)
             return;
 
-        // Point de bascule : là où la tête se trouve à l'instant du
-        // changement. Chaque caisse y passera à son tour.
-        Vector3 pointBascule = ancienne.GetPosition(distanceTrain);
+        // C'est l'extrémité qui MÈNE qui s'engage sur l'appareil, et non le
+        // repère de tête : un convoi en marche arrière entre par sa queue.
+        float reculAncien = _marche > 0 ? 0f : LongueurConvoi;
+        float engageAncien = distanceTrain - reculAncien;
 
-        Vector3 sensAncien = ancienne.GetDirection(distanceTrain);
+        Vector3 pointBascule = ancienne.GetPosition(engageAncien);
+        Vector3 sensAncien = ancienne.GetDirection(engageAncien);
 
-        _voieQuittee = ancienne;
-        _distanceAiguille = distanceTrain;
-
-        trackSystem = nouvelleVoie;
-        distanceTrain = nouvelleVoie.ProjeterDistance(pointBascule);
+        float dNeuve = nouvelleVoie.ProjeterDistance(pointBascule);
+        Vector3 sensNouveau = nouvelleVoie.GetDirection(dNeuve);
 
         // Une traversée unique est parcourue dans un sens par un convoi et
         // dans l'autre par celui d'en face. Si le nouveau tracé s'oppose à
         // l'ancien, on inverse le sens de marche : le convoi continue alors
         // dans la même direction du monde, sa distance progressant à l'envers
         // sur la nouvelle voie.
-        Vector3 sensNouveau = nouvelleVoie.GetDirection(distanceTrain);
+        bool opposes = Vector3.Dot(sensAncien, sensNouveau) < 0f;
 
-        if (Vector3.Dot(sensAncien, sensNouveau) < 0f)
+        _voieQuittee = ancienne;
+        _distanceAiguille = engageAncien;
+        _signeAncienne = opposes ? -1 : 1;
+
+        _sensEngagement = opposes ? -_marche : _marche;
+        _reculEngagement = _sensEngagement > 0 ? 0f : LongueurConvoi;
+
+        trackSystem = nouvelleVoie;
+        _distanceAiguilleNeuve = dNeuve;
+
+        // Le repère de tête se déduit de l'extrémité engagée : le convoi
+        // conserve ainsi exactement les positions qu'il occupait.
+        distanceTrain = dNeuve + _reculEngagement;
+
+        if (opposes)
         {
             InverserSens();
+            _marche = -_marche;
 
-            // Les caisses encore en arrière restent sur l'ancienne voie, où
-            // le sens n'a pas changé : leur progression doit donc s'inverser
-            // par rapport à celle de la tête.
-            for (int i = 0; i < _signes.Length; i++)
-                _signes[i] = -1;
+            // La caisse ne pivote pas pour autant : elle garde son orientation
+            // dans le monde, et c'est sa référence au tracé qui se retourne —
+            // ce qui retourne aussi l'ordre des caisses le long du tracé.
+            _orientation = -_orientation;
 
             Debug.Log($"[Train] {name} : tracé opposé, sens de marche inversé.", this);
         }
 
-        // La tête seule change de voie ; son écart avec les caisses restées
-        // en arrière est conservé sur leur propre voie.
-        if (wagons != null && wagons.Length > 0 && wagons[0] != null)
-        {
-            _distances[0] = distanceTrain;
-            _signes[0] = 1;
-            wagons[0].SetTrack(nouvelleVoie);
-        }
-
-        Debug.Log($"[Train] {name} : tête engagée sur {nouvelleVoie.name}, " +
-                  $"{wagons.Length - 1} caisse(s) encore sur {ancienne.name}.", this);
+        Debug.Log($"[Train] {name} : convoi engagé sur {nouvelleVoie.name} " +
+                  $"depuis {ancienne.name}.", this);
     }
 
 
