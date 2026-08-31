@@ -89,6 +89,12 @@ public class NavetteController : MonoBehaviour
 
     private float _tempsPhase;
 
+    // Diagnostic d'immobilité : une navette qui commande la marche et n'avance
+    // pas a rencontré quelque chose. Plutôt que de laisser l'utilisateur
+    // deviner, on le dit une fois, avec la raison.
+    private float _tempsImmobile;
+    private bool _immobiliteSignalee;
+
 
     private void Awake()
     {
@@ -118,6 +124,8 @@ public class NavetteController : MonoBehaviour
             return;
         }
 
+        SurveillerImmobilite();
+
         switch (phase)
         {
             case Phase.Attente: Attente(); break;
@@ -128,6 +136,55 @@ public class NavetteController : MonoBehaviour
             case Phase.Freinage: Freinage(); break;
             case Phase.Stationnement: Stationnement(); break;
         }
+    }
+
+
+    // ==================================================================
+    // DIAGNOSTIC
+    // ==================================================================
+
+    /// <summary>
+    /// Signale une immobilité anormale : la navette commande la marche et le
+    /// convoi n'avance pas. Le message nomme la cause, qui est toujours l'une
+    /// de celles-ci — sans quoi il faudrait la chercher à la main dans la
+    /// scène, ce qui est long et rarement concluant.
+    /// </summary>
+    private void SurveillerImmobilite()
+    {
+        bool devraitRouler =
+            phase == Phase.Depart || phase == Phase.Marche || phase == Phase.Approche;
+
+        if (!devraitRouler || train.vitesse > 0.05f)
+        {
+            _tempsImmobile = 0f;
+            _immobiliteSignalee = false;
+            return;
+        }
+
+        _tempsImmobile += Time.deltaTime;
+
+        if (_tempsImmobile < 3f || _immobiliteSignalee)
+            return;
+
+        _immobiliteSignalee = true;
+
+        string cause;
+
+        if (train.etat == TrainController.EtatTrain.FinDeVoie)
+            cause = $"butée de quai atteinte (distance {train.distanceTrain:0.0} m, " +
+                    $"limites {train.LimiteBasse:0.0} à {train.LimiteHaute:0.0} sur " +
+                    $"{(train.trackSystem != null ? train.trackSystem.name : "aucune voie")}) — " +
+                    "le sens commandé pousse contre la butée";
+        else if (train.physics != null && train.physics.Frein != TrainPhysicsController.EtatFrein.Relache)
+            cause = $"frein {train.physics.Frein} encore serré";
+        else if (train.sens == TrainController.SensTrain.Neutre)
+            cause = "sens de marche au Neutre";
+        else
+            cause = $"état {train.etat}, vitesse demandée " +
+                    $"{(train.physics != null ? train.physics.vitesseDemandee : 0f):0.0} m/s";
+
+        Debug.LogWarning(
+            $"[Navette] {train.name} immobile depuis 3 s en phase {phase} : {cause}.", this);
     }
 
 

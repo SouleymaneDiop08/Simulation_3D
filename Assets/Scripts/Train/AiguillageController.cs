@@ -36,6 +36,16 @@ public class AiguillageController : MonoBehaviour
              "Décocher pour reproduire une défaillance d'enclenchement.")]
     public bool enclenchementActif = true;
 
+    [Tooltip("Refuser la déviation tant qu'un convoi occupe l'itinéraire visé. " +
+             "Sans ce contrôle, l'aiguille envoie un convoi sur une voie déjà " +
+             "prise et le choc est certain. Décocher pour reproduire une " +
+             "défaillance d'enclenchement d'itinéraire.")]
+    public bool controleItineraire = true;
+
+    [Tooltip("Distance en deçà de laquelle une caisse est considérée comme " +
+             "posée sur une voie, en mètres.")]
+    public float gabaritVoie = 4f;
+
 
     [Header("Diagnostic (lecture seule)")]
     [Tooltip("Ce que l'automate a demandé.")]
@@ -50,6 +60,7 @@ public class AiguillageController : MonoBehaviour
 
     private float _tempsManoeuvre;
     private bool _cibleDeviation;
+    private string _refusSignale;
 
 
     /// <summary>Voie effectivement en service. Nulle pendant une manœuvre.</summary>
@@ -99,16 +110,94 @@ public class AiguillageController : MonoBehaviour
 
         if (enclenchementActif && occupee)
         {
-            Debug.LogWarning(
-                $"[Aiguillage] {name} : manœuvre refusée, aiguille occupée.", this);
+            Refuser("aiguille occupée");
             return;
         }
+
+        if (deviation && controleItineraire && ItineraireOccupe(out string qui))
+        {
+            Refuser($"itinéraire occupé par {qui}");
+            return;
+        }
+
+        _refusSignale = null;
 
         _cibleDeviation = deviation;
         _tempsManoeuvre = 0f;
         controle = PositionAiguille.EnManoeuvre;
 
         Debug.Log($"[Aiguillage] {name} : manœuvre vers {(deviation ? "DÉVIATION" : "PRINCIPALE")}", this);
+    }
+
+
+    // ==========================================================
+    // ENCLENCHEMENT D'ITINÉRAIRE
+    // ==========================================================
+
+    /// <summary>
+    /// Vrai si un convoi se trouve sur la partie de la déviation qui lui est
+    /// propre.
+    ///
+    /// Une déviation longe d'abord la voie directe avant de s'en écarter : le
+    /// convoi qui se présente à l'aiguille est donc lui-même « sur » la
+    /// déviation, au sens géométrique. On ne retient donc que les caisses qui
+    /// sont sur la déviation SANS être sur la voie directe — c'est-à-dire
+    /// au-delà de la traversée, là où l'itinéraire est réellement engagé.
+    /// </summary>
+    private bool ItineraireOccupe(out string qui)
+    {
+        qui = null;
+
+        if (voieDeviation == null || !voieDeviation.Pret || PosteDeCommande.Instance == null)
+            return false;
+
+        foreach (TrainController train in PosteDeCommande.Instance.trains)
+        {
+            if (train == null || train.wagons == null)
+                continue;
+
+            foreach (WagonController wagon in train.wagons)
+            {
+                if (wagon == null)
+                    continue;
+
+                Vector3 p = wagon.transform.position;
+
+                if (!SurVoie(p, voieDeviation))
+                    continue;
+
+                if (SurVoie(p, voiePrincipale))
+                    continue;
+
+                qui = train.name;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+    private bool SurVoie(Vector3 point, TrackSystem voie)
+    {
+        if (voie == null || !voie.Pret)
+            return false;
+
+        Vector3 surLaVoie = voie.GetPosition(voie.ProjeterDistance(point));
+
+        return Vector3.Distance(surLaVoie, point) <= gabaritVoie;
+    }
+
+
+    /// <summary>Refuse une manœuvre sans inonder la console : un motif, un message.</summary>
+    private void Refuser(string motif)
+    {
+        if (_refusSignale == motif)
+            return;
+
+        _refusSignale = motif;
+
+        Debug.LogWarning($"[Aiguillage] {name} : manœuvre refusée — {motif}.", this);
     }
 
 
