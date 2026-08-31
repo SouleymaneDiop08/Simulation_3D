@@ -131,8 +131,13 @@ public class TrainController : MonoBehaviour
     private TrackSystem _voieQuittee;
     private float _distanceAiguille;
 
+    // Résolue une fois : l'inversion de sens doit lui être répercutée.
+    private NavetteController _navette;
+
     private void Start()
     {
+        _navette = GetComponent<NavetteController>();
+
         if (wagons == null)
             wagons = new WagonController[0];
 
@@ -562,6 +567,12 @@ public class TrainController : MonoBehaviour
             sens = SensTrain.Arriere;
         else if (sens == SensTrain.Arriere)
             sens = SensTrain.Avant;
+
+        // La navette raisonne en extrémité visée, pas en signe de progression :
+        // il faut lui retourner son objectif, sinon elle roulerait vers la
+        // butée opposée à celle qu'elle croit surveiller.
+        if (_navette != null)
+            _navette.InverserObjectif();
     }
 
 

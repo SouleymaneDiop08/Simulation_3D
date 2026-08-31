@@ -238,6 +238,19 @@ public class NavetteController : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// Bascule l'extrémité visée. Appelé quand le convoi passe sur un tracé
+    /// parcouru en sens inverse : sa distance progresse alors à l'envers, si
+    /// bien que la butée vers laquelle il roule change de bout. Sans cela la
+    /// navette guetterait l'extrémité qu'elle vient de quitter et n'engagerait
+    /// jamais son freinage.
+    /// </summary>
+    public void InverserObjectif()
+    {
+        versButeeHaute = !versButeeHaute;
+    }
+
+
     /// <summary>Distance restante avant la butée visée, en mètres.</summary>
     public float DistanceAvantButee()
     {

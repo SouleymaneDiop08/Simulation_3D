@@ -809,7 +809,7 @@ Transform:
   m_GameObject: {fileID: 131415970}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 456.34, y: 0.141, z: 2425.38}
+  m_LocalPosition: {x: 459.55, y: 0.5, z: 2647}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -855,7 +855,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AiguillageTrigger
   aiguillage: {fileID: 977162723}
-  train: {fileID: 1049974604}
+  train: {fileID: 0}
 --- !u!65 &131415974
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -875,7 +875,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
+  m_Size: {x: 6, y: 10, z: 24}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &199387943
 GameObject:
@@ -9808,7 +9808,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
+  m_Size: {x: 6, y: 10, z: 24}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!4 &1589731245
 Transform:
@@ -9819,7 +9819,7 @@ Transform:
   m_GameObject: {fileID: 1589731243}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 436.27356, y: 0.141, z: 1992.2827}
+  m_LocalPosition: {x: 433.1, y: 0.5, z: 1960.93}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -9838,7 +9838,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AiguillageTrigger
   aiguillage: {fileID: 1305464763}
-  train: {fileID: 1535455435}
+  train: {fileID: 0}
 --- !u!54 &1589731247
 Rigidbody:
   m_ObjectHideFlags: 0
