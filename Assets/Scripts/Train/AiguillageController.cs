@@ -115,4 +115,21 @@ public class AiguillageController : MonoBehaviour
     // Conservées pour compatibilité avec les déclencheurs existants
     public void ActiverDeviation() => CommanderDeviation(true);
     public void ActiverPrincipale() => CommanderDeviation(false);
+
+
+    // ==========================================================
+    // ESSAI DEPUIS L'ÉDITEUR
+    //
+    // « controle » est un compte rendu, pas une commande : l'écrire à la main
+    // dans l'inspecteur place l'aiguille sans manœuvre, sans délai et sans
+    // enclenchement — donc sans rien de ce qui fait l'intérêt du banc. Ces
+    // deux entrées, accessibles par un clic droit sur le composant en mode
+    // Play, passent par la vraie chaîne de commande.
+    // ==========================================================
+
+    [ContextMenu("Commander la déviation")]
+    private void EssaiDeviation() => CommanderDeviation(true);
+
+    [ContextMenu("Commander la voie directe")]
+    private void EssaiPrincipale() => CommanderDeviation(false);
 }
