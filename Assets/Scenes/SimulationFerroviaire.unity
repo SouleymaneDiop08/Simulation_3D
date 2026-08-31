@@ -521,6 +521,7 @@ GameObject:
   m_Component:
   - component: {fileID: 73770719}
   - component: {fileID: 73770720}
+  - component: {fileID: 963194320}
   m_Layer: 0
   m_Name: TrackDeviation
   m_TagString: Untagged
@@ -1129,6 +1130,7 @@ GameObject:
   m_Component:
   - component: {fileID: 267263527}
   - component: {fileID: 267263528}
+  - component: {fileID: 963194321}
   m_Layer: 0
   m_Name: TrackMain
   m_TagString: Untagged
@@ -1276,6 +1278,7 @@ GameObject:
   m_Component:
   - component: {fileID: 276859545}
   - component: {fileID: 276859546}
+  - component: {fileID: 963194322}
   m_Layer: 0
   m_Name: TrackMain (1)
   m_TagString: Untagged
@@ -1409,6 +1412,7 @@ GameObject:
   m_Component:
   - component: {fileID: 289173533}
   - component: {fileID: 289173534}
+  - component: {fileID: 963194323}
   m_Layer: 0
   m_Name: TrackDeviation (1)
   m_TagString: Untagged
@@ -2881,6 +2885,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 8107567945732940122, guid: adc478dd0fb83434d976b4ee1b72d577, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: adc478dd0fb83434d976b4ee1b72d577, type: 3}
       propertyPath: m_LocalPosition.x
       value: 512
@@ -16005,3 +16013,131 @@ MonoBehaviour:
   autorisee: 1
   phase: 0
   versButeeHaute: 1
+--- !u!114 &963194320
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 73770718}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 855d21015eb440ab86a53794c4605f66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ecartement: 3
+  largeurRail: 0.35
+  hauteurRail: 0.35
+  genererTraverses: 1
+  espacementTraverses: 3
+  largeurTraverse: 1.2
+  epaisseurTraverse: 0.25
+  debordTraverse: 0.9
+  genererBallast: 0
+  largeurBallast: 4
+  epaisseurBallast: 0.3
+  distanceDebut: 880
+  distanceFin: 1090
+  pasEchantillon: 4
+  materiauRail: {fileID: 0}
+  materiauTraverse: {fileID: 0}
+  materiauBallast: {fileID: 0}
+  couleurRail: {r: 0.42, g: 0.42, b: 0.45, a: 1}
+  couleurTraverse: {r: 0.3, g: 0.26, b: 0.22, a: 1}
+  couleurBallast: {r: 0.38, g: 0.36, b: 0.34, a: 1}
+--- !u!114 &963194321
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 267263526}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 855d21015eb440ab86a53794c4605f66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ecartement: 3
+  largeurRail: 0.35
+  hauteurRail: 0.35
+  genererTraverses: 1
+  espacementTraverses: 3
+  largeurTraverse: 1.2
+  epaisseurTraverse: 0.25
+  debordTraverse: 0.9
+  genererBallast: 1
+  largeurBallast: 4
+  epaisseurBallast: 0.3
+  distanceDebut: 0
+  distanceFin: -1
+  pasEchantillon: 4
+  materiauRail: {fileID: 0}
+  materiauTraverse: {fileID: 0}
+  materiauBallast: {fileID: 0}
+  couleurRail: {r: 0.42, g: 0.42, b: 0.45, a: 1}
+  couleurTraverse: {r: 0.3, g: 0.26, b: 0.22, a: 1}
+  couleurBallast: {r: 0.38, g: 0.36, b: 0.34, a: 1}
+--- !u!114 &963194322
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 276859544}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 855d21015eb440ab86a53794c4605f66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ecartement: 3
+  largeurRail: 0.35
+  hauteurRail: 0.35
+  genererTraverses: 1
+  espacementTraverses: 3
+  largeurTraverse: 1.2
+  epaisseurTraverse: 0.25
+  debordTraverse: 0.9
+  genererBallast: 1
+  largeurBallast: 4
+  epaisseurBallast: 0.3
+  distanceDebut: 0
+  distanceFin: -1
+  pasEchantillon: 4
+  materiauRail: {fileID: 0}
+  materiauTraverse: {fileID: 0}
+  materiauBallast: {fileID: 0}
+  couleurRail: {r: 0.42, g: 0.42, b: 0.45, a: 1}
+  couleurTraverse: {r: 0.3, g: 0.26, b: 0.22, a: 1}
+  couleurBallast: {r: 0.38, g: 0.36, b: 0.34, a: 1}
+--- !u!114 &963194323
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 289173532}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 855d21015eb440ab86a53794c4605f66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ecartement: 3
+  largeurRail: 0.35
+  hauteurRail: 0.35
+  genererTraverses: 1
+  espacementTraverses: 3
+  largeurTraverse: 1.2
+  epaisseurTraverse: 0.25
+  debordTraverse: 0.9
+  genererBallast: 0
+  largeurBallast: 4
+  epaisseurBallast: 0.3
+  distanceDebut: 880
+  distanceFin: 1090
+  pasEchantillon: 4
+  materiauRail: {fileID: 0}
+  materiauTraverse: {fileID: 0}
+  materiauBallast: {fileID: 0}
+  couleurRail: {r: 0.42, g: 0.42, b: 0.45, a: 1}
+  couleurTraverse: {r: 0.3, g: 0.26, b: 0.22, a: 1}
+  couleurBallast: {r: 0.38, g: 0.36, b: 0.34, a: 1}
