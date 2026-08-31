@@ -188,15 +188,22 @@ public class WagonController : MonoBehaviour
             ? Quaternion.LookRotation(direction, Vector3.up)
             : transform.rotation;
 
-        // On a calculé où doit être la CAISSE ; on en déduit le pivot en
-        // retranchant l'écart mesuré. Sans cela la caisse resterait au bout de
-        // son bras de levier.
+        // Seule la composante LE LONG DE LA VOIE est reprise : c'est elle qui
+        // faisait pendre la caisse au bout de son bras de levier, et elle est
+        // déjà compensée par l'échantillonnage à dCaisse.
         //
+        // Les composantes transversale et VERTICALE sont conservées telles
+        // quelles : ce sont les bogies qui reposent sur le rail, la caisse est
+        // deux mètres au-dessus. Les reprendre aussi reviendrait à poser le
+        // centre de la caisse sur le rail, donc à enfoncer le train dans la
+        // plateforme de la moitié de sa hauteur.
+        Vector3 repriseLeLongDeLaVoie = new Vector3(0f, 0f, ecart.z);
+
         // L'écart de déraillement est tourné avec la voie : sinon un wagon
         // déraillé serait toujours poussé vers -X global, quelle que soit son
         // orientation dans la courbe.
         transform.SetPositionAndRotation(
-            position + rotationVoie * (derailOffset - ecart),
+            position + rotationVoie * (derailOffset - repriseLeLongDeLaVoie),
             rotationVoie * derailRotation
         );
     }
