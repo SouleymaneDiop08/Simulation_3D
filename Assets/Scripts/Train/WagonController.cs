@@ -13,6 +13,30 @@ public class WagonController : MonoBehaviour
     [Tooltip("Longueur du wagon, en mètres.")]
     public float longueurWagon = 10f;
 
+    [Tooltip("Entraxe des bogies, en mètres.\n\n" +
+             "Une caisse ne suit pas la voie comme un point : elle repose sur " +
+             "deux pivots posés sur le rail, et c'est la CORDE entre eux qui " +
+             "donne son orientation, pas la tangente en son milieu. Dans une " +
+             "traversée, une caisse rigide de quinze mètres orientée sur la " +
+             "tangente voit ses extrémités sortir du rail et le convoi se " +
+             "tortiller ; sur la corde, il s'inscrit dans la courbe comme un " +
+             "vrai train.\n\n" +
+             "Mettre à zéro pour revenir au placement ponctuel.")]
+    public float empattementBogies = 10f;
+
+    [Tooltip("Poser la CAISSE VISIBLE sur la voie, et non le pivot.\n\n" +
+             "Le pivot de ces wagons n'est pas au milieu de leur caisse : il " +
+             "en est écarté de plusieurs mètres, et jusqu'à une trentaine pour " +
+             "les caisses de tête et de queue. Or c'est le pivot qu'on place " +
+             "sur la voie. La caisse pend donc au bout d'un bras de levier : " +
+             "dès que le pivot s'incline dans une courbe, elle balaie de " +
+             "côté et sort du rail — quatre mètres et demi dans la traversée.\n\n" +
+             "L'écart est MESURÉ au démarrage sur les rendus de la caisse : " +
+             "rien à saisir, et aucun effet là où le pivot est déjà centré. " +
+             "La caisse conserve sa place le long du convoi ; seule sa " +
+             "position transversale est corrigée.")]
+    public bool poserLaCaisseSurLaVoie = true;
+
     [Header("Train")]
     public TrainController train;
 
@@ -35,6 +59,43 @@ public class WagonController : MonoBehaviour
 
     private Renderer[] _rendus;
     private bool _rendusCherches;
+
+    // Écart du centre de la caisse au pivot, exprimé dans le repère de
+    // rotation du wagon, en mètres monde. Mesuré une fois, avant tout
+    // déplacement.
+    private Vector3 _ecartCaisse;
+
+
+    private void Awake()
+    {
+        MesurerEcartCaisse();
+    }
+
+
+    /// <summary>
+    /// Relève où se trouve la caisse par rapport à son pivot.
+    ///
+    /// Les systèmes de particules sont écartés : la fumée de choc est placée
+    /// en avant du wagon et fausserait le centre.
+    /// </summary>
+    private void MesurerEcartCaisse()
+    {
+        MeshRenderer[] rendus = GetComponentsInChildren<MeshRenderer>();
+
+        if (rendus == null || rendus.Length == 0)
+        {
+            _ecartCaisse = Vector3.zero;
+            return;
+        }
+
+        Bounds bornes = rendus[0].bounds;
+
+        for (int i = 1; i < rendus.Length; i++)
+            bornes.Encapsulate(rendus[i].bounds);
+
+        _ecartCaisse = Quaternion.Inverse(transform.rotation) *
+                       (bornes.center - transform.position);
+    }
 
 
     /// <summary>
@@ -87,10 +148,38 @@ public class WagonController : MonoBehaviour
         if (trackSystem == null || !trackSystem.Pret)
             return;
 
-        distanceSurVoie = Mathf.Clamp(distanceSurVoie, 0f, trackSystem.Longueur);
+        float longueur = trackSystem.Longueur;
 
-        Vector3 position = trackSystem.GetPosition(distanceSurVoie);
-        Vector3 direction = trackSystem.GetDirection(distanceSurVoie);
+        distanceSurVoie = Mathf.Clamp(distanceSurVoie, 0f, longueur);
+
+        Vector3 ecart = poserLaCaisseSurLaVoie ? _ecartCaisse : Vector3.zero;
+
+        // Là où la caisse se trouve DÉJÀ le long de la voie. On la laisse à sa
+        // place dans le convoi — on ne corrige que la manière dont elle y est
+        // posée. Le sens compte : sur un tracé parcouru à l'envers, l'avant du
+        // wagon regarde vers les distances décroissantes.
+        float dCaisse = Mathf.Clamp(
+            distanceSurVoie + ecart.z * (orientation < 0 ? -1f : 1f), 0f, longueur);
+
+        // Les deux bogies, posés sur le rail de part et d'autre de la caisse.
+        float demi = Mathf.Max(0f, empattementBogies * 0.5f);
+
+        float dAvant = Mathf.Clamp(dCaisse + demi, 0f, longueur);
+        float dArriere = Mathf.Clamp(dCaisse - demi, 0f, longueur);
+
+        Vector3 bogieAvant = trackSystem.GetPosition(dAvant);
+        Vector3 bogieArriere = trackSystem.GetPosition(dArriere);
+
+        // La caisse est portée par ses pivots : son centre est au milieu de la
+        // corde, légèrement à l'intérieur de la courbe — exactement comme un
+        // véhicule réel — et son axe est celui de la corde.
+        Vector3 position = (bogieAvant + bogieArriere) * 0.5f;
+        Vector3 direction = bogieAvant - bogieArriere;
+
+        // Empattement nul, ou caisse acculée contre une extrémité de voie :
+        // les deux pivots se confondent, la corde ne dit plus rien.
+        if (direction.sqrMagnitude < 1e-6f)
+            direction = trackSystem.GetDirection(dCaisse);
 
         if (orientation < 0)
             direction = -direction;
@@ -99,11 +188,15 @@ public class WagonController : MonoBehaviour
             ? Quaternion.LookRotation(direction, Vector3.up)
             : transform.rotation;
 
+        // On a calculé où doit être la CAISSE ; on en déduit le pivot en
+        // retranchant l'écart mesuré. Sans cela la caisse resterait au bout de
+        // son bras de levier.
+        //
         // L'écart de déraillement est tourné avec la voie : sinon un wagon
         // déraillé serait toujours poussé vers -X global, quelle que soit son
         // orientation dans la courbe.
         transform.SetPositionAndRotation(
-            position + rotationVoie * derailOffset,
+            position + rotationVoie * (derailOffset - ecart),
             rotationVoie * derailRotation
         );
     }
