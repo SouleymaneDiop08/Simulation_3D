@@ -36,7 +36,18 @@ public class TrainCollisionDetector : MonoBehaviour
     public float delaiArmement = 2f;
 
 
-    [Header("Impact")]
+    [Header("Suite du choc")]
+    [Tooltip("Immobiliser définitivement les convois accidentés. Décoché, le " +
+             "choc est SIGNALÉ — explosion, dégâts, témoin — sans arrêter la " +
+             "simulation : c'est ce qu'on veut d'un banc de démonstration, où " +
+             "un convoi bloqué met fin à l'exercice.")]
+    public bool immobiliserApresChoc = false;
+
+    [Tooltip("Secondes avant qu'un nouveau choc puisse être signalé. Sans ce " +
+             "délai, deux convois qui se traversent déclencheraient une " +
+             "explosion à chaque image.")]
+    public float delaiReamorcage = 15f;
+
     public float forceImpact = 35f;
     public float dureeImpact = 1f;
 
@@ -60,6 +71,17 @@ public class TrainCollisionDetector : MonoBehaviour
 
 
     private bool collisionEffectuee = false;
+    private float _instantChoc = float.NegativeInfinity;
+
+
+    // ==========================================================
+    // TÉMOINS (lecture seule)
+    // ==========================================================
+
+    [Header("Témoins (lecture seule)")]
+    [Tooltip("Vrai dès qu'un choc a eu lieu sur ce convoi. Pure information. " +
+             "Le témoin de voie commune, lui, est porté par PosteDeCommande.")]
+    public bool chocSurvenu;
 
 
     private void OnEnable()
@@ -76,7 +98,15 @@ public class TrainCollisionDetector : MonoBehaviour
 
     private void Update()
     {
-        if (train == null || collisionEffectuee)
+        if (train == null)
+            return;
+
+        // Réarmement : le choc est un événement, pas un état définitif.
+        if (collisionEffectuee && !immobiliserApresChoc &&
+            Time.time - _instantChoc >= delaiReamorcage)
+            collisionEffectuee = false;
+
+        if (collisionEffectuee)
             return;
 
         // Le temps que TrainController pose ses wagons sur la voie, ceux-ci
@@ -159,9 +189,15 @@ public class TrainCollisionDetector : MonoBehaviour
         collisionEffectuee = true;
         autre.collisionEffectuee = true;
 
+        _instantChoc = Time.time;
+        autre._instantChoc = Time.time;
+
+        chocSurvenu = true;
+        autre.chocSurvenu = true;
+
         Vector3 pointImpact = pointContact + Vector3.up * 2f;
 
-        Debug.Log($"[Choc] {train.name} et {autre.train.name} au point {pointImpact}", this);
+        Debug.LogWarning($"[Choc] {train.name} et {autre.train.name} au point {pointImpact}", this);
 
         // Les dégâts étaient auparavant imbriqués dans le test sur le prefab
         // d'explosion : sans prefab assigné, aucun dégât n'était appliqué.
@@ -169,6 +205,13 @@ public class TrainCollisionDetector : MonoBehaviour
         AppliquerDegats(autre.train, pointImpact);
 
         DeclencherExplosion(pointImpact);
+
+        // L'immobilisation est facultative, et écartée par défaut. Un convoi
+        // mis à l'état Bloque ne repart JAMAIS : la navette lui rend la main,
+        // et la démonstration s'arrête là. On montre le choc, on ne l'endure
+        // pas.
+        if (!immobiliserApresChoc)
+            return;
 
         train.AppliquerImpact(forceImpact, dureeImpact);
         autre.train.AppliquerImpact(forceImpact, dureeImpact);
@@ -226,5 +269,39 @@ public class TrainCollisionDetector : MonoBehaviour
     public void Reinitialiser()
     {
         collisionEffectuee = false;
+        chocSurvenu = false;
+        _instantChoc = float.NegativeInfinity;
+    }
+
+
+    /// <summary>
+    /// Vrai si les deux convois circulent sur le même rail, quelles que soient
+    /// les TrackSystem qu'ils suivent : une déviation longe une voie directe,
+    /// deux tracés distincts peuvent donc désigner le même rail. Le critère
+    /// est donc géométrique — la voie de l'un passe-t-elle sous les caisses de
+    /// l'autre.
+    /// </summary>
+    public static bool SurLaMemeVoie(TrainController a, TrainController b, float gabarit)
+    {
+        if (a == null || b == null || a.wagons == null)
+            return false;
+
+        TrackSystem voie = b.trackSystem;
+
+        if (voie == null || !voie.Pret)
+            return false;
+
+        foreach (WagonController wagon in a.wagons)
+        {
+            if (wagon == null)
+                continue;
+
+            Vector3 p = wagon.transform.position;
+
+            if (Vector3.Distance(voie.GetPosition(voie.ProjeterDistance(p)), p) <= gabarit)
+                return true;
+        }
+
+        return false;
     }
 }

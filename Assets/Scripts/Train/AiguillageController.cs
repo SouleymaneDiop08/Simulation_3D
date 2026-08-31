@@ -36,11 +36,15 @@ public class AiguillageController : MonoBehaviour
              "Décocher pour reproduire une défaillance d'enclenchement.")]
     public bool enclenchementActif = true;
 
-    [Tooltip("Refuser la déviation tant qu'un convoi occupe l'itinéraire visé. " +
-             "Sans ce contrôle, l'aiguille envoie un convoi sur une voie déjà " +
-             "prise et le choc est certain. Décocher pour reproduire une " +
-             "défaillance d'enclenchement d'itinéraire.")]
-    public bool controleItineraire = true;
+    [Tooltip("Refuser la déviation tant qu'un convoi occupe l'itinéraire visé.\n\n" +
+             "DÉCOCHÉ PAR DÉFAUT : les deux navettes parcourent chacune toute " +
+             "sa voie, si bien qu'un itinéraire est presque toujours occupé — " +
+             "cocher cette case interdirait donc la déviation la plupart du " +
+             "temps. Le choc n'immobilise plus rien : mieux vaut le montrer " +
+             "que d'interdire la manœuvre. À cocher pour démontrer ce que " +
+             "l'enclenchement empêche, et à décocher pour montrer ce qu'il en " +
+             "coûte de s'en passer.")]
+    public bool controleItineraire = false;
 
     [Tooltip("Distance en deçà de laquelle une caisse est considérée comme " +
              "posée sur une voie, en mètres.")]

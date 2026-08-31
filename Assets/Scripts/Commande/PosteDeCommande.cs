@@ -49,7 +49,22 @@ public class PosteDeCommande : MonoBehaviour
     public float delaiSansOrdre = 3f;
 
 
+    [Header("Voie commune")]
+    [Tooltip("Distance en deçà de laquelle une caisse est considérée posée " +
+             "sur une voie, en mètres.")]
+    public float gabaritVoie = 4f;
+
+    [Tooltip("Secondes entre deux évaluations. Le test parcourt les tracés " +
+             "échantillonnés : inutile de le refaire à chaque image.")]
+    public float periodeControleVoie = 0.25f;
+
+
     [Header("Diagnostic (lecture seule)")]
+    [Tooltip("Vrai lorsque deux convois circulent sur le même rail. PURE " +
+             "INFORMATION : rien n'est arrêté, ralenti ni refusé. Remonte à " +
+             "l'automate par le bit 3 des alarmes.")]
+    public bool deuxTrainsMemeVoie;
+
     public bool automatePresent;
     public string sourceCommande = "(aucune)";
     public float secondesDepuisDernierOrdre;
@@ -57,6 +72,7 @@ public class PosteDeCommande : MonoBehaviour
 
     private float _dernierOrdre;
     private NavetteController[] _navettes;
+    private float _prochainControleVoie;
 
 
     // ======================================================================
@@ -100,6 +116,8 @@ public class PosteDeCommande : MonoBehaviour
 
     private void FixedUpdate()
     {
+        ControlerVoieCommune();
+
         secondesDepuisDernierOrdre = float.IsNegativeInfinity(_dernierOrdre)
             ? float.PositiveInfinity
             : Time.unscaledTime - _dernierOrdre;
@@ -123,6 +141,41 @@ public class PosteDeCommande : MonoBehaviour
 
         for (int i = 0; i < trains.Length; i++)
             AppliquerTrain(i, CommandeTrain.Nominale);
+    }
+
+
+    /// <summary>
+    /// Renseigne le témoin de voie commune. Ce n'est qu'un constat : deux
+    /// convois sur le même rail ne sont ni arrêtés ni ralentis ici. La suite
+    /// appartient à l'automate, ou au choc.
+    /// </summary>
+    private void ControlerVoieCommune()
+    {
+        if (Time.unscaledTime < _prochainControleVoie)
+            return;
+
+        _prochainControleVoie = Time.unscaledTime + Mathf.Max(0.05f, periodeControleVoie);
+
+        bool commune = false;
+
+        for (int i = 0; i < trains.Length && !commune; i++)
+        {
+            for (int j = i + 1; j < trains.Length && !commune; j++)
+            {
+                commune =
+                    TrainCollisionDetector.SurLaMemeVoie(trains[i], trains[j], gabaritVoie) ||
+                    TrainCollisionDetector.SurLaMemeVoie(trains[j], trains[i], gabaritVoie);
+            }
+        }
+
+        if (commune != deuxTrainsMemeVoie)
+        {
+            deuxTrainsMemeVoie = commune;
+
+            Debug.Log(commune
+                ? "[Poste] Deux convois sur la même voie."
+                : "[Poste] Les convois ont retrouvé des voies distinctes.", this);
+        }
     }
 
 
@@ -245,7 +298,10 @@ public class PosteDeCommande : MonoBehaviour
     }
 
 
-    /// <summary>Alarmes : bit 0 accident, bit 1 déraillement, bit 2 automate absent.</summary>
+    /// <summary>
+    /// Alarmes : bit 0 accident, bit 1 déraillement, bit 2 automate absent,
+    /// bit 3 deux convois sur la même voie.
+    /// </summary>
     public int Alarmes()
     {
         int masque = 0;
@@ -265,6 +321,10 @@ public class PosteDeCommande : MonoBehaviour
 
         if (!automatePresent)
             masque |= 4;
+
+        // Bit 3 : deux convois sur la même voie. Information, pas verrou.
+        if (deuxTrainsMemeVoie)
+            masque |= 8;
 
         return masque;
     }
