@@ -116,6 +116,16 @@ public class TrainController : MonoBehaviour
 
     private TrackSystem prochaineVoie;
 
+    // Chaque wagon porte SA distance sur SA voie. Une seule distance partagée
+    // ne permettrait pas de franchir une aiguille caisse par caisse : les
+    // deux voies n'ont ni la même origine ni le même paramétrage.
+    private float[] _distances;
+
+    // Voie quittée et point de bascule, le temps que tout le convoi franchisse
+    // l'appareil. Null dès que la dernière caisse est passée.
+    private TrackSystem _voieQuittee;
+    private float _distanceAiguille;
+
     private void Start()
     {
         if (wagons == null)
@@ -135,6 +145,25 @@ public class TrainController : MonoBehaviour
         // bâtiment de la gare.
         if (distanceTrain < LimiteBasse)
             distanceTrain = LimiteBasse;
+
+        RepartirWagons();
+    }
+
+
+    /// <summary>Aligne toutes les caisses derrière la tête, sur la voie courante.</summary>
+    private void RepartirWagons()
+    {
+        _distances = new float[wagons.Length];
+
+        for (int i = 0; i < wagons.Length; i++)
+        {
+            _distances[i] = distanceTrain - i * distanceEntreWagons;
+
+            if (wagons[i] != null)
+                wagons[i].SetTrack(trackSystem);
+        }
+
+        _voieQuittee = null;
     }
 
 
@@ -193,7 +222,7 @@ public class TrainController : MonoBehaviour
                 break;
         }
 
-        distanceTrain += vitesseReelle * Time.deltaTime;
+        AvancerConvoi(vitesseReelle * Time.deltaTime);
 
         if (trackSystem == null || !trackSystem.Pret)
             return;
@@ -240,15 +269,88 @@ public class TrainController : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// Fait avancer le convoi entier du même pas : la tête et chaque caisse,
+    /// chacune sur sa propre voie. C'est ce qui permet à un convoi d'être à
+    /// cheval sur deux voies pendant qu'il franchit un appareil.
+    /// </summary>
+    private void AvancerConvoi(float pas)
+    {
+        distanceTrain += pas;
+
+        if (_distances == null || _distances.Length != wagons.Length)
+            RepartirWagons();
+
+        for (int i = 0; i < _distances.Length; i++)
+            _distances[i] += pas;
+
+        FranchirAiguille(pas);
+    }
+
+
+    /// <summary>
+    /// Bascule sur la nouvelle voie les caisses qui viennent d'atteindre
+    /// l'aiguille — et elles seules.
+    ///
+    /// Un train ne saute pas d'une voie à l'autre : ses caisses franchissent
+    /// l'appareil l'une après l'autre, et le convoi reste à cheval sur les
+    /// deux voies le temps du passage. Basculer tout le monde d'un coup, comme
+    /// le faisait AppliquerVoie, déplaçait latéralement des caisses encore à
+    /// plusieurs dizaines de mètres en amont.
+    /// </summary>
+    private void FranchirAiguille(float pas)
+    {
+        if (_voieQuittee == null || trackSystem == null || !trackSystem.Pret)
+            return;
+
+        bool versAvant = pas >= 0f;
+        bool resteEnArriere = false;
+
+        for (int i = 0; i < wagons.Length; i++)
+        {
+            WagonController wagon = wagons[i];
+
+            if (wagon == null || wagon.trackSystem != _voieQuittee)
+                continue;
+
+            // La caisse a-t-elle atteint le point de bascule ?
+            bool atteint = versAvant
+                ? _distances[i] >= _distanceAiguille
+                : _distances[i] <= _distanceAiguille;
+
+            if (!atteint)
+            {
+                resteEnArriere = true;
+                continue;
+            }
+
+            // Reprojection au point exact où elle se trouve : sans cela la
+            // caisse sauterait, les deux voies n'ayant pas le même origine.
+            Vector3 ou = _voieQuittee.GetPosition(_distances[i]);
+            _distances[i] = trackSystem.ProjeterDistance(ou);
+            wagon.SetTrack(trackSystem);
+        }
+
+        if (!resteEnArriere)
+        {
+            Debug.Log($"[Train] {name} : convoi entièrement passé sur {trackSystem.name}.", this);
+            _voieQuittee = null;
+        }
+    }
+
+
     private void PositionnerWagons()
     {
         if (wagons == null)
             return;
 
+        if (_distances == null || _distances.Length != wagons.Length)
+            RepartirWagons();
+
         for (int i = 0; i < wagons.Length; i++)
         {
             if (wagons[i] != null)
-                wagons[i].Move(distanceTrain - i * distanceEntreWagons);
+                wagons[i].Move(_distances[i]);
         }
     }
 
@@ -261,7 +363,7 @@ public class TrainController : MonoBehaviour
     {
         tempsImpact += Time.deltaTime;
 
-        distanceTrain += vitesseImpact * Time.deltaTime;
+        AvancerConvoi(vitesseImpact * Time.deltaTime);
 
         if (trackSystem != null && trackSystem.Pret)
             distanceTrain = Mathf.Clamp(distanceTrain, LimiteBasse, LimiteHaute);
@@ -366,30 +468,55 @@ public class TrainController : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// Engage le convoi sur une nouvelle voie.
+    ///
+    /// Seule la TÊTE bascule ici. Les caisses suivantes restent sur l'ancienne
+    /// voie et la quitteront chacune à son tour, en arrivant au point de
+    /// bascule — c'est FranchirAiguille qui s'en charge. Le convoi est donc à
+    /// cheval sur les deux voies le temps du passage, comme un vrai train sur
+    /// un appareil.
+    /// </summary>
     public void AppliquerVoie(TrackSystem nouvelleVoie)
     {
         if (nouvelleVoie == null || !nouvelleVoie.Pret)
             return;
 
-        // La distance est reprojetée sur le nouveau tracé. La conserver telle
-        // quelle ferait sauter le convoi, les deux voies n'ayant ni la même
-        // origine ni la même longueur.
-        if (trackSystem != null && trackSystem != nouvelleVoie && trackSystem.Pret)
+        TrackSystem ancienne = trackSystem;
+
+        // Première affectation, ou pose initiale : tout le convoi suit.
+        if (ancienne == null || ancienne == nouvelleVoie || !ancienne.Pret)
         {
-            Vector3 positionActuelle = trackSystem.GetPosition(distanceTrain);
-            distanceTrain = nouvelleVoie.ProjeterDistance(positionActuelle);
+            trackSystem = nouvelleVoie;
+            RepartirWagons();
+            return;
         }
 
-        trackSystem = nouvelleVoie;
-
-        if (wagons == null)
+        // Un franchissement est déjà en cours : on attend qu'il s'achève
+        // plutôt que d'empiler deux voies quittées.
+        if (_voieQuittee != null)
             return;
 
-        foreach (WagonController wagon in wagons)
+        // Point de bascule : là où la tête se trouve à l'instant du
+        // changement. Chaque caisse y passera à son tour.
+        Vector3 pointBascule = ancienne.GetPosition(distanceTrain);
+
+        _voieQuittee = ancienne;
+        _distanceAiguille = distanceTrain;
+
+        trackSystem = nouvelleVoie;
+        distanceTrain = nouvelleVoie.ProjeterDistance(pointBascule);
+
+        // La tête seule change de voie ; son écart avec les caisses restées
+        // en arrière est conservé sur leur propre voie.
+        if (wagons != null && wagons.Length > 0 && wagons[0] != null)
         {
-            if (wagon != null)
-                wagon.SetTrack(trackSystem);
+            _distances[0] = distanceTrain;
+            wagons[0].SetTrack(nouvelleVoie);
         }
+
+        Debug.Log($"[Train] {name} : tête engagée sur {nouvelleVoie.name}, " +
+                  $"{wagons.Length - 1} caisse(s) encore sur {ancienne.name}.", this);
     }
 
 
